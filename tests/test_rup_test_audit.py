@@ -449,7 +449,9 @@ TASK = "## Description\n\nDo it.\n\n## Target files\n\n- app/calc.py\n\n## Cover
 REF = "tests/test_calc.py::test_discount_st_001_ac_1"
 DELIVERY = ("## What was done\n\nDiscount.\n\n## Files changed\n\n- app/calc.py\n\n"
             f"## Tests\n\n- {REF} — covers ST-001/AC-1\n\n"
-            f"## Red evidence\n\n### {REF}\n\n```\nE   ImportError\n```\n")
+            f"## Red evidence\n\n### {REF}\n\n```\nE   ImportError\n```\n\n"
+            "## Verification\n\nCommand: python -m pytest -q\nResult: exit 0, 1 passed\n"
+            "Commit: deadbee\n")
 MUTATION = "\n## Mutation\n\napp/calc.py:1-4 — 9 mutants, 9 killed (100%).\n"
 
 

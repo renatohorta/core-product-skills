@@ -15,7 +15,8 @@ STORY = ("## User story\n\nAs a user I want to add so that I get sums.\n\n"
 TASK = ("## Description\n\nImplement add.\n\n## Target files\n\n- app/calc.py\n\n"
         "## Covers\n\n- ST-001/AC-1\n- ST-001/AC-2\n")
 BUG_DOC = "## Symptom\n\nadd(0, 0) returns None.\n\n## Reproduction\n\n1. call add(0, 0)\n"
-DIAG = "## Root cause\n\nThe zero case returns early without a value.\n"
+DIAG = ("## Root cause\n\nThe zero case returns early without a value.\n\n"
+        "Evidence: the traceback points at the early return with a=0, b=0.\n")
 CODE = "def add(a, b):\n    return a + b\n"
 TESTS = ("from app.calc import add\n\n\n"
          "def test_add_two_numbers_st_001_ac_1():\n    assert add(1, 2) == 3\n\n\n"
@@ -28,11 +29,16 @@ BT = "tests/test_bug.py::test_add_zero_bug_001"
 DELIVERY = ("## What was done\n\nImplemented add.\n\n## Files changed\n\n- app/calc.py\n\n"
             f"## Tests\n\n- {T1} — covers ST-001/AC-1\n- {T2} — covers ST-001/AC-2\n\n"
             f"## Red evidence\n\n### {T1}\n\n```\nE   ImportError: cannot import name 'add'\n```\n\n"
-            f"### {T2}\n\n```\nE   ImportError: cannot import name 'add'\n```\n")
+            f"### {T2}\n\n```\nE   ImportError: cannot import name 'add'\n```\n\n"
+            "## Verification\n\nCommand: python -m pytest -q\nResult: exit 0, 2 passed\n"
+            "Commit: deadbee\n")
 BUG_DELIVERY = ("## What was done\n\nReturn the sum in the zero case.\n\n## Files changed\n\n- app/calc.py\n\n"
                 f"## Tests\n\n- {BT} — covers BUG-001\n\n"
-                f"## Red evidence\n\n### {BT}\n\n```\nE   assert None == 0\n```\n")
-REVIEW = "## Verdict\n\napproved\n\n## Findings\n\n- none\n"
+                f"## Red evidence\n\n### {BT}\n\n```\nE   assert None == 0\n```\n\n"
+                "## Verification\n\nCommand: python -m pytest -q\nResult: exit 0, 1 passed\n"
+                "Commit: deadbee\n")
+REVIEW = ("## Verdict\n\napproved\n\n## Spec\n\npass\n\n## Quality\n\napproved\n\n"
+          "## Findings\n\n- none\n")
 
 
 def test_full_flow_through_the_clis(ctx_env, python_cmd, tmp_path):

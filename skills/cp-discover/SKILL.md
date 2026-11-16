@@ -1,6 +1,6 @@
 ---
 name: cp-discover
-description: "Run a discovery conversation with the user before building anything new: problem, users, goals, non-goals, anti-goals, constraints and open questions, confirmed by the user and recorded in .context/. Use before starting a new product, feature or epic, when the idea is still fuzzy."
+description: "Use when starting anything new — a product, a feature or an epic — or when the idea is still fuzzy: a discovery conversation (problem, users, goals, non-goals, anti-goals, constraints, open questions) confirmed by the user and recorded in .context/."
 ---
 
 # cp-discover — talk first, then write
@@ -16,10 +16,17 @@ Before building anything new: a product, a feature, an epic. Skip it for a bug
 
 ## Conversation rules
 
+The order of the conversation and its gates are in
+`references/brainstorming.md` (ADR-0019): look before asking, echo the request in
+about 200 words, lay out the approaches **before** writing, play back in chunks,
+size the work, and do not build before approval. The short version:
+
 - One question per message. Never a list of questions.
 - Build each question on the last answer; say why you ask when it is not obvious.
 - Do not guess to fill a gap: ask, or put it in Open questions.
-- Play back each part in your own words and ask what is wrong or missing.
+- Lay out the two or three real approaches in a message of their own, with what
+  each trades off and your recommendation, before writing the document.
+- Play back each part in your own words (200-300 words) and ask what is wrong or missing.
 - Write and record only after the user confirms the playback.
 
 ## Steps
@@ -32,3 +39,6 @@ Before building anything new: a product, a feature, an epic. Skip it for a bug
 The recorder checks every heading, then writes
 `.context/docs/01-inception/cp-discover.md` and logs it. Needs the RUP standard
 authorized in `.context/` (exit 5 otherwise: see `cp-context`).
+
+Exit codes: 0 ok · 1 usage/invalid document · 4 `.context/` not writable ·
+5 not authorized.

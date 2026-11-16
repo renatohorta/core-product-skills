@@ -47,6 +47,7 @@ def delivery(tests, red=None, *, drop=()):
         "Files changed": "- app/booking.py",
         "Tests": "\n".join(f"- {ref} — covers {', '.join(ids)}" for ref, ids in tests),
         "Red evidence": "\n\n".join(f"### {ref}\n\n```\n{out}\n```" for ref, out in red.items()),
+        "Verification": "Command: pytest -q\nResult: exit 0\nCommit: deadbee",
     }
     return "\n\n".join(f"## {k}\n\n{v}" for k, v in parts.items() if k not in drop) + "\n"
 

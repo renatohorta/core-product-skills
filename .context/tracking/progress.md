@@ -2,6 +2,25 @@
 
 > Last update: 2026-11-16.
 
+## Skills learn from superpowers — ADR-0019 (2026-11-16)
+
+Source: evaluation of `obra/superpowers` v7.0.2 (15 skills, prompt-only) against
+the cp-* family. Imported the three disciplines that were measurably stronger;
+rejected the rest (hook, voice, duplicate process skills).
+
+| Change | Status | Date |
+|--------|--------|------|
+| Trigger-first descriptions, ≤400 chars, no workflow summary; `tests/test_skill_contract.py` (trigger, length, 20 KB compaction cut, exit codes) | ✅ Done | 2026-11-16 |
+| `cp-discover` conversation ritual (`references/brainstorming.md`): look first, approaches before writing, playback in chunks, sizing, gate | ✅ Done | 2026-11-16 |
+| Task brief: optional `## Interfaces`, `## Constraints`, `## Review focus` on cards; printed by `--start`, checked by `cp-review` | ✅ Done | 2026-11-16 |
+| `## Verification` (Command/Result/Commit) required in a delivery; `--finish` rejects without it; `## Rulings` format checked | ✅ Done | 2026-11-16 |
+| `cp-review`: two verdicts (`## Spec` pass/gap, `## Quality` approved/changes), `Cannot verify:` findings, `--package ID` → `.context/reviews/ID.md`, merge verified on the merged result | ✅ Done | 2026-11-16 |
+| `cp-debug`: four phases + boundary instrumentation; `## Root cause` requires `Evidence:` | ✅ Done | 2026-11-16 |
+| `cp-build --status [ID]`: resume map (delivery, verification, mutation, last history) | ✅ Done | 2026-11-16 |
+| `cp-build/references/dispatch.md`: subagent dispatch and reviewing its report | ✅ Done | 2026-11-16 |
+| `docs/04-transition/skill-testing.md`: behaviour testing of a skill change (RED baseline, minimal rule, loopholes, form) | ✅ Done | 2026-11-16 |
+| Suite | ✅ 426 passed | 2026-11-16 |
+
 ## Audit closure — cp-test cannot look cleaner than the work behind it (ADR-0018, 2026-11-16)
 
 Source: the coverage-closure gate of Claude-BugHunter (`engine/closure.py`), ported

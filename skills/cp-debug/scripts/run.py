@@ -8,6 +8,7 @@ Usage:
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 
@@ -26,6 +27,7 @@ from _shared.rup import EXIT_OK, setup_console  # noqa: E402
 from _shared.testcheck import parse_delivery  # noqa: E402  (tolerant `## ` heading matching)
 
 DIAGNOSABLE = ("1-backlog", "2-todo", "3-doing")
+_EVIDENCE = re.compile(r"^\s*evidence\s*:\s*(\S.*)$", re.I | re.M)
 PROTOCOL = [
     "Reproduce the bug with the steps in the card.",
     "Write a failing regression test whose name (or a comment above it) names `{id}`; run it and save the red output.",
@@ -67,9 +69,14 @@ def diagnose(context_dir, card_id, source) -> None:
         fail(f"{card_id} is a {card.type}; cp-debug works on bugs")
     if card.status not in DIAGNOSABLE:
         fail(f"{card_id} is in {card.status}; --diagnose needs {', '.join(DIAGNOSABLE)}")
-    cause = parse_delivery(read_document(source)).section("Root cause")
+    cause = parse_delivery(read_document(source)).section("Root cause").strip()
     if not cause:
         fail("the document needs a non-empty `## Root cause` section")
+    proof = _EVIDENCE.search(cause)
+    if not proof or len(proof[1].strip()) < 10:
+        fail("`## Root cause` needs the proof, not only the story: add a line "
+             "`Evidence: <the log line, the failing input, or the component boundary that "
+             "showed where it breaks>` (ADR-0019). A cause you cannot point at is a guess.")
     again = bool(cards.section_text(card, "Root cause"))
     card = cards.set_section(card, "Root cause", cause)
     if again:

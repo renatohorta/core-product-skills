@@ -4,14 +4,14 @@
 
 ## Status
 
-- [x] Done — suite green: **357 passed**, ~10 s, no LLM, no third-party runtime
+- [x] Done — suite green: **426 passed**, ~11 s, no LLM, no third-party runtime
 
 ## Current state
 
 | Metric | Value |
 |--------|-------|
 | `cp-*` skills | 15: 9 document (orchestrator + 8 disciplines, 21 roles) + 6 execution |
-| Automated tests | 357 |
+| Automated tests | 426 |
 | CI pipeline | ✅ GitHub Actions on `main` + PRs (Linux 3.12/3.13 blocking, Windows informative) |
 | Dependencies | runtime: none · dev: `pytest` |
 | Linter/formatter | ❌ None |
@@ -25,13 +25,16 @@
 | `tests/test_consent.py`, `tests/test_rup_context.py` | Marker gate: every writing command exits 5 without it and writes nothing; read-only packets warn; `--init`/upgrade only adds, never overwrites; pointer note added once; import creates missing files / appends delimited blocks, originals untouched |
 | `tests/test_frontmatter.py`, `tests/test_cards.py` | Parser/writer round trip; ID sequences, parent rules, criteria numbering, `Covers` validation, History last, moves (skip warning, reason required), roll-up, derivation report |
 | `tests/test_roadmap.py` | Release/iteration files, planning, generated views (header, progress, unplanned epics) |
+| `tests/test_skill_contract.py` | Every `SKILL.md`: trigger-first description (≤400 chars, one line), the 20 KB compaction budget, and its exit-code contract (ADR-0019) |
 | `tests/test_audit_closure.py` | Audit closure (ADR-0018): the declared surface (extensions, test code, ignored trees, `audit_exclude`), segment-aware globs, the four verdicts, `blocked` never closing, waivers requiring a reason, the generated caveats, and the CLI gate (fails while a module is silent, passes after a waiver) |
 | `tests/test_testcheck.py` | Python (`ast`) and JS/TS checks: missing test, no criterion link, uncovered criterion, no assertion, constant assertion, no project call, missing red evidence |
 | `tests/test_rup_{discover,build,debug,review}.py` | Discovery record; start/finish with good and bad deliveries (nothing written on rejection); bug flow (root cause before finish); review checklist and verdict moves |
 | `tests/test_higiene.py` | No committed secrets, no machine paths, `.env` never tracked |
 
 The host's writing quality (the artifact content) is not tested — it is the
-agent's job; the suite guarantees the contract around it.
+agent's job; the suite guarantees the contract around it. A change meant to alter
+agent **behaviour** is measured separately: `skill-testing.md` (baseline without
+the change, then with it).
 
 ## Test strategy
 

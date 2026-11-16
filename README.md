@@ -194,6 +194,11 @@ agent ──► run.py --record doc.md --phase P     ─► validates every "## 
   survivor triage, cards for the real gaps, and **audit closure** — every source
   module owes a verdict (audited, waived with its reason, blocked, never audited)
   before a score may call the tests fine (ADR-0016, ADR-0018).
+- **Evidence, not claims.** A delivery carries `## Verification` (command, result,
+  commit) on top of the red evidence, and `## Rulings` for every deviation; a
+  review records two verdicts — `## Spec` (pass/gap) and `## Quality`
+  (approved/changes) — and a `- Cannot verify:` line is an open question, never a
+  pass (ADR-0019).
 - **Which `.context/`.** The skills use `--context-dir`, else
   `$RUP_CONTEXT_DIR`, else the nearest `.context/` up to the git root. Curated
   docs are never touched.

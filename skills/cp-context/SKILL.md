@@ -1,6 +1,6 @@
 ---
 name: cp-context
-description: "Set up and check the project's .context/ for the RUP skills. Use when a cp-* skill exits with code 5 (not authorized), when a project has no .context/ or one without the .rup-standard marker, or when the user says 'set up RUP', 'adopt the RUP standard', 'init .context'."
+description: "Use when a project needs its .context/ set up, checked, authorized, or existing docs imported — the step before any other cp-* skill is allowed to write."
 ---
 
 # cp-context — adopt the RUP standard in `.context/`

@@ -67,6 +67,39 @@ def buildable(context_dir, card_id):
     return card
 
 
+def status(context_dir, card_id=None) -> None:
+    """Where the work stands — the resume map that survives a compaction (ADR-0019)."""
+    todo = [cards.get(context_dir, card_id)] if card_id else \
+        sorted((c for c in cards.load_all(context_dir).values()
+                if c.status == "3-doing" and c.type in BUILDABLE), key=lambda c: c.id)
+    if not todo:
+        print("Nothing in 3-doing. Start a card with `--start <ID>` (or check `cp-backlog --list`).")
+        return
+    print("# Build status\n")
+    for card in todo:
+        stored = cards.section_text(card, "Delivery")
+        delivery = (testcheck.parse_delivery(testcheck.extract_delivery(stored))
+                    if stored.strip() else None)
+        checks = [
+            ("delivery", bool(stored.strip())),
+            ("verification", bool(delivery and delivery.section("Verification").strip())),
+            ("mutation", bool(delivery and delivery.section("Mutation").strip())),
+        ]
+        history = [l.strip() for l in cards.section_text(card, "History").splitlines() if l.strip()]
+        print(f"- {card.id} [{card.status}] {card.title}")
+        print("  " + " · ".join(f"{name}: {'yes' if ok else 'no'}" for name, ok in checks))
+        print(f"  last history: {history[-1] if history else '(none)'}")
+        if not stored.strip():
+            print(f"  next: write the delivery (references/tdd.md), then "
+                  f"`--finish {card.id} --delivery FILE|-`")
+        elif not checks[1][1]:
+            print(f"  next: the delivery lacks `## Verification` — run the suite and add "
+                  f"Command/Result/Commit, then re-run `--finish {card.id}`")
+        else:
+            print(f"  next: `cp-review {card.id}` (the card is in 4-review)")
+    print()
+
+
 def start(context_dir, card_id) -> None:
     context.ensure_writable(context_dir)
     card = buildable(context_dir, card_id)
@@ -141,6 +174,8 @@ def finish(context_dir, card_id, source, project_root) -> None:
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description="RUP build — start and finish a task test-first")
     p.add_argument("--start", metavar="ID", help="start a task/bug: move to 3-doing, print the packet")
+    p.add_argument("--status", nargs="?", const="", metavar="ID",
+                   help="read-only: what is in 3-doing, its delivery/verification/mutation state")
     p.add_argument("--finish", metavar="ID", help="validate the delivery and move to 4-review")
     p.add_argument("--delivery", metavar="FILE|-", help="delivery document (with --finish)")
     p.add_argument("--project-root", help="project root holding the tests (default: parent of .context/)")
@@ -148,6 +183,9 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     context_dir = context.resolve_context_dir(args.context_dir)
 
+    if args.status is not None:
+        status(context_dir, args.status or None)
+        return EXIT_OK
     if args.start:
         start(context_dir, args.start)
         return EXIT_OK

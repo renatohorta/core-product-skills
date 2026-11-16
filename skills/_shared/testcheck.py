@@ -19,7 +19,7 @@ from _shared import testcheck_js, testcheck_py
 from _shared.cards import Card, acceptance_criteria, covers
 from _shared.discipline import _norm, missing_artifacts
 
-REQUIRED_SECTIONS = ["What was done", "Files changed", "Tests", "Red evidence"]
+REQUIRED_SECTIONS = ["What was done", "Files changed", "Tests", "Red evidence", "Verification"]
 JS_SUFFIXES = {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}
 ABOVE = 3  # comment lines directly above a test that count as "on the test"
 
@@ -120,6 +120,43 @@ def parse_delivery(text: str) -> Delivery:
         block = _FENCE.search(body)
         delivery.red[_ref(*_split_ref(heading))] = block[1].strip() if block else ""
     return delivery
+
+
+_COMMAND = re.compile(r"^\s*(?:command|comando)\s*:\s*(\S.*)$", re.I | re.M)
+_RESULT = re.compile(r"^\s*(?:exit|result|resultado|status)\s*:\s*(\S.*)$", re.I | re.M)
+_COMMIT = re.compile(r"^\s*(?:commit|sha)\s*:\s*([0-9a-f]{7,40})\b", re.I | re.M)
+
+_RULING = re.compile(r"^\s*[-*]\s+(.+)$", re.M)
+
+def rulings_problems(body: str) -> list:
+    """`## Rulings` (optional): every deviation says what, why and what it costs."""
+    body = (body or "").strip()
+    if not body:
+        return []
+    out = []
+    for line in _RULING.findall(body):
+        if line.count(" — ") < 2 or len(line) < 40:
+            out.append("`## Rulings` line needs `Ruling: <what> — <why> — <cost if wrong>`: "
+                       + line[:80])
+    return out
+
+
+def verification_problems(body: str) -> list:
+    """`## Verification` must carry the green run itself: command, result and commit.
+
+    Red evidence proves the test failed first; this proves it passes now, on a
+    commit anyone can check out. A claim without the run is not a verification
+    (ADR-0019).
+    """
+    body = body or ""
+    out = []
+    if not _COMMAND.search(body):
+        out.append("`## Verification` needs `Command: <the exact command you ran>`")
+    if not _RESULT.search(body):
+        out.append("`## Verification` needs `Result: <what the run said> (e.g. exit 0, 42 passed)`")
+    if not _COMMIT.search(body):
+        out.append("`## Verification` needs `Commit: <the SHA the run was made on>`")
+    return out
 
 
 def id_pattern(ref_id: str) -> re.Pattern:
@@ -225,6 +262,8 @@ def check_delivery(delivery: Delivery, task: Card, story, project_root: Path) ->
     if missing:
         problems.append("The delivery lacks required sections: "
                         + ", ".join(f"## {m}" for m in missing))
+    problems += verification_problems(delivery.section("Verification"))
+    problems += rulings_problems(delivery.section("Rulings"))
     problems += [f"Unrecognised line in ## Tests (expected `- <path>::<test> — covers <ID>`): {u}"
                  for u in delivery.unparsed]
     if not delivery.tests:

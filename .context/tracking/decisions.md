@@ -612,3 +612,70 @@ waive them with a reason — that is the point, and the waiver file makes the
 trade-off auditable. The surface is declared in the profile, so non-Python
 projects declare their extensions instead of the module guessing.
 
+
+---
+
+## ADR-0019 — the skills learn from superpowers: trigger-first descriptions, a task brief, the verification gate and two verdicts
+
+**Date**: 2026-11-16 · **Status**: Accepted
+
+**Context**: `obra/superpowers` (v7.0.2) was evaluated against the `cp-*` family
+to see what is worth importing. It is the opposite architecture — prompt-only, no
+state, no deterministic tooling — so most of it does not fit: we already have the
+persistence (`.context/`), the gates and the measurement (mutation, closure) it
+lacks. But three of its disciplines are stronger than ours, and they were measured
+there rather than asserted:
+
+- the **`description` is the only text a harness always shows**, so it must state
+  when to use the skill and never summarize its workflow (an agent that reads the
+  summary follows the summary instead of opening the skill);
+- a **task brief** with exact interfaces, verbatim constraints and a review focus
+  is what lets a task be executed (or dispatched) without the whole conversation;
+- **evidence before claims** (verification-before-completion) and **two separate
+  verdicts** (spec compliance vs code quality) with a review package handed to the
+  reviewer as a file, not as a session.
+
+**Decision**:
+
+- Every `SKILL.md` description opens with the trigger (`Use when …`), stays under
+  400 characters and says nothing about the workflow; `cp-orchestrator`'s drops
+  from 775 to 327 characters. `tests/test_skill_contract.py` enforces the trigger,
+  the length and the 20 KB compaction budget (Claude Code truncates a re-attached
+  skill past 20,000 characters).
+- `cp-discover` gains the conversation ritual it was missing
+  (`references/brainstorming.md`): look before asking, echo the request, lay out
+  the approaches **before** writing, play back in 200-300 word chunks, size the
+  work, and do not build before approval.
+- A card may carry `## Interfaces`, `## Constraints` and `## Review focus`
+  (`cp-backlog` `references/cards.md`). They are the task brief: optional, never
+  invented by the skill, printed by `cp-build --start` and checked by `cp-review`.
+- A delivery now needs `## Verification` — `Command:`, `Result:` and `Commit:` of
+  the green run — on top of the red evidence (ADR-0016). `cp-build --finish`
+  rejects it without those three lines, and `## Rulings` records every deviation
+  as `what — why — what it costs`.
+- `cp-review` records **two** verdicts: `## Spec` (`pass`/`gap`) and `## Quality`
+  (`approved`/`changes`). `approved` requires both; a thing the reviewer could not
+  check is a `- Cannot verify:` finding, never a pass. `--package ID` writes
+  `.context/reviews/<ID>.md` — the file the reviewer reads — and the merge step
+  now requires the full suite green **on the merged result**.
+- `cp-debug` gets the four phases and boundary instrumentation
+  (`references/debugging.md`), and `## Root cause` must carry an `Evidence:` line;
+  `--diagnose` rejects the document without it.
+- `cp-build --status [ID]` answers "where was I" from the cards (delivery,
+  verification, mutation, last history line) — the resume map that survives a
+  compaction.
+- `cp-build/references/dispatch.md` documents handing a card to a subagent (Claude
+  Code's Task, Hermes' `delegate_task`): five-part dispatch, no nested reviewers,
+  verify the report instead of trusting it.
+- Skill changes are tested as behaviour, not only as contracts:
+  `docs/04-transition/skill-testing.md` (RED baseline without the change, minimal
+  rule, close the loopholes, match the form to the failure).
+
+**Consequences**: Two of the three new gates (verification, spec+quality) will
+reject work that used to pass — that is the point, and the messages say what is
+missing. Existing deliveries and reviews in `.context/` keep their old shape:
+gates apply to what is written after this decision. Not imported: the
+SessionStart hook (our install + pointer note covers it, and a bash hook per
+harness is a maintenance cost we are not paying), the "your human partner" voice,
+and the 15 process skills that would duplicate `cp-discover`, `cp-backlog`,
+`cp-build` and `cp-review`.

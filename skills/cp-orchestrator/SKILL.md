@@ -1,25 +1,6 @@
 ---
 name: cp-orchestrator
-description: "RUP-Orchestrator — the FRONT DOOR of the cp-* skills and single point of contact for the RUP lifecycle. Routes any plain request about the project (a new idea or feature, requirements, backlog, implement a task, a bug, a review, test quality, status, what next) to the right cp-* skill and runs it — the user never has to name a skill. Also classifies demands into RUP phases, maintains the Software Development Plan, Business Case and Risk List, emits Work Orders and drives the 8 discipline skills — the agent running the skill is the LLM; artifacts are recorded in .context/. Use whenever the user asks for software-project work without naming a specific cp-* skill, says 'what now / continue', or says 'run RUP', 'plan the iteration', 'manage the project', 'work orders'."
----
-
-# cp-orchestrator — RUP Lifecycle Governance
-
-Central orchestrator of the **RUP (Rational Unified Process)** family. The user
-dialogues exclusively with this skill; it plans phases and iterations, manages
-risks, formulates formal **Work Orders** and drives the discipline skills.
-
-Grounded in *The Rational Unified Process: An Introduction* (3rd ed.), Philippe
-Kruchten. Base role: **Project Manager** (supported by the Project Reviewer).
-
-## Front door — start every request here
-
-The user talks in plain words ("quero login com Google", "o checkout quebrou",
-"revisa o TK-012", "e agora?"). They **never** have to know or call a cp-*
-skill: you route the request and run the skills yourself.
-
-```bash
-python scripts/run.py --route "<what the user asked>"
+description: "Use when the user asks for any software-project work without naming a cp-* skill — a new idea or feature, requirements, backlog, a task, a bug, a review, test quality, status, \"what now\" — or says \"run RUP\", \"plan the iteration\", \"work orders\". Front door of the cp-* family: routes the request and runs the right skill itself."
 ```
 
 The routing packet (read-only) shows the project state from `.context/`

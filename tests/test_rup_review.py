@@ -22,7 +22,9 @@ REF = "tests/test_booking.py::test_book_slot_st_001_ac_1"
 DELIVERY = ("## What was done\n\nImplemented booking.\n\n"
             "## Files changed\n\n- `app/booking.py`\n- app/extra.py\n\n"
             f"## Tests\n\n- {REF} — covers ST-001/AC-1\n\n"
-            f"## Red evidence\n\n### {REF}\n\n```\nE   ImportError\n```\n")
+            f"## Red evidence\n\n### {REF}\n\n```\nE   ImportError\n```\n\n"
+            "## Verification\n\nCommand: python -m pytest -q\nResult: exit 0, 1 passed\n"
+            "Commit: deadbee\n")
 
 
 @pytest.fixture
@@ -47,8 +49,9 @@ def run(args, env, python_cmd, stdin=None):
     return run_skill(SKILL, args, env, python_cmd, stdin=stdin)
 
 
-def doc(verdict, findings):
-    return f"## Verdict\n\n{verdict}\n\n## Findings\n\n{findings}\n"
+def doc(verdict, findings, spec="pass", quality="approved"):
+    return (f"## Verdict\n\n{verdict}\n\n## Spec\n\n{spec}\n\n"
+            f"## Quality\n\n{quality}\n\n## Findings\n\n{findings}\n")
 
 
 def test_review_packet_requires_card_in_review(proj, ctx_env, python_cmd):
@@ -133,7 +136,9 @@ def test_redelivery_replaces_delivery_and_review_shows_second(proj, ctx_env, pyt
     ref2 = "tests/test_booking.py::test_second_st_001_ac_1"
     second = ("## What was done\n\nSecond attempt SECOND-MARK.\n\n## Files changed\n\n- app/booking.py\n- app/slots.py\n\n"
               f"## Tests\n\n- {ref2} — covers ST-001/AC-1\n\n"
-              f"## Red evidence\n\n### {ref2}\n\n```\nE   Fail\n```\n")
+              f"## Red evidence\n\n### {ref2}\n\n```\nE   Fail\n```\n\n"
+              "## Verification\n\nCommand: python -m pytest -q\nResult: exit 0, 2 passed\n"
+              "Commit: deadbee\n")
     r = subprocess_finish(ctx_env, python_cmd, second)
     assert r.returncode == EXIT_OK, r.stdout + r.stderr
     body = cards.get(ctx, "TK-001").body
@@ -148,3 +153,46 @@ def test_redelivery_replaces_delivery_and_review_shows_second(proj, ctx_env, pyt
 
 def subprocess_finish(env, python_cmd, text):
     return run_skill("cp-build", ["--finish", "TK-001", "--delivery", "-"], env, python_cmd, stdin=text)
+
+
+# ─── two verdicts and the review package (ADR-0019) ──────────────────────
+
+def test_record_requires_both_verdict_sections(proj, ctx_env, python_cmd):
+    ctx, _ = proj
+    r = run(["--record", "TK-001", "--doc", "-"], ctx_env, python_cmd,
+            stdin="## Verdict\n\napproved\n\n## Findings\n\n- none\n")
+    assert r.returncode == EXIT_USAGE, r.stdout + r.stderr
+    assert "## Spec" in r.stdout and "## Quality" in r.stdout
+    assert cards.get(ctx, "TK-001").status == "4-review"
+
+
+def test_approval_needs_spec_pass_and_quality_approved(proj, ctx_env, python_cmd):
+    ctx, _ = proj
+    r = run(["--record", "TK-001", "--doc", "-"], ctx_env, python_cmd,
+            stdin=doc("approved", "none", spec="gap"))
+    assert r.returncode == EXIT_USAGE, r.stdout + r.stderr
+    assert "spec" in r.stdout.lower() and cards.get(ctx, "TK-001").status == "4-review"
+    r = run(["--record", "TK-001", "--doc", "-"], ctx_env, python_cmd,
+            stdin=doc("approved", "none", quality="changes"))
+    assert r.returncode == EXIT_USAGE and cards.get(ctx, "TK-001").status == "4-review"
+
+
+def test_spec_gap_with_changes_requested_is_accepted(proj, ctx_env, python_cmd):
+    ctx, _ = proj
+    r = run(["--record", "TK-001", "--doc", "-"], ctx_env, python_cmd,
+            stdin=doc("changes requested", "- AC-1 is not asserted", spec="gap",
+                      quality="changes"))
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    assert cards.get(ctx, "TK-001").status == "3-doing"
+
+
+def test_package_writes_the_file_the_reviewer_reads(proj, ctx_env, python_cmd):
+    ctx, _ = proj
+    r = run(["--package", "TK-001"], ctx_env, python_cmd)
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    path = Path(ctx) / "reviews" / "TK-001.md"
+    assert path.is_file()
+    text = path.read_text(encoding="utf-8")
+    assert "Review package for TK-001" in text
+    assert "## 2b. Task brief" in text and "## 3. Test checks" in text
+    assert "Cannot verify" in text

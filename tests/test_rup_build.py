@@ -24,7 +24,9 @@ TRIVIAL_TEST = ("from app.booking import book\n\n\n"
 REF = "tests/test_booking.py::test_book_slot_st_001_ac_1"
 DELIVERY = (f"## What was done\n\nImplemented booking.\n\n## Files changed\n\n- app/booking.py\n\n"
             f"## Tests\n\n- {REF} — covers ST-001/AC-1\n\n"
-            f"## Red evidence\n\n### {REF}\n\n```\nE   ImportError\n```\n")
+            f"## Red evidence\n\n### {REF}\n\n```\nE   ImportError\n```\n\n"
+            "## Verification\n\nCommand: python -m pytest -q\nResult: exit 0, 1 passed\n"
+            "Commit: deadbee\n")
 
 
 @pytest.fixture
@@ -109,3 +111,50 @@ def test_build_requires_consent(proj, ctx_env, python_cmd):
     r = run(["--start", "TK-001"], ctx_env, python_cmd)
     assert r.returncode == EXIT_NEEDS_CONSENT, r.stdout + r.stderr
     assert cards.get(ctx, "TK-001").status == "1-backlog"
+
+
+# ─── evidence gates (ADR-0019) ───────────────────────────────────────────
+
+def test_delivery_without_verification_is_rejected(proj, ctx_env, python_cmd):
+    ctx, root = proj
+    put_test(root, GOOD_TEST)
+    assert run(["--start", "TK-001"], ctx_env, python_cmd).returncode == EXIT_OK
+    stripped = DELIVERY.split("## Verification")[0]
+    r = run(["--finish", "TK-001", "--delivery", "-"], ctx_env, python_cmd, stdin=stripped)
+    assert r.returncode == EXIT_USAGE, r.stdout + r.stderr
+    assert "Verification" in r.stdout
+    assert cards.get(ctx, "TK-001").status == "3-doing"
+
+
+def test_ruling_must_state_what_why_and_cost(proj, ctx_env, python_cmd):
+    ctx, root = proj
+    put_test(root, GOOD_TEST)
+    assert run(["--start", "TK-001"], ctx_env, python_cmd).returncode == EXIT_OK
+    bad = DELIVERY + "\n## Rulings\n\n- skipped the index\n"
+    r = run(["--finish", "TK-001", "--delivery", "-"], ctx_env, python_cmd, stdin=bad)
+    assert r.returncode == EXIT_USAGE, r.stdout + r.stderr
+    assert "Rulings" in r.stdout and cards.get(ctx, "TK-001").status == "3-doing"
+
+
+def test_status_reports_the_resume_state(proj, ctx_env, python_cmd):
+    ctx, _ = proj
+    r = run(["--status"], ctx_env, python_cmd)
+    assert r.returncode == EXIT_OK and "Nothing in 3-doing" in r.stdout
+    assert run(["--start", "TK-001"], ctx_env, python_cmd).returncode == EXIT_OK
+    r = run(["--status"], ctx_env, python_cmd)
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    assert "TK-001 [3-doing]" in r.stdout
+    assert "delivery: no" in r.stdout and "verification: no" in r.stdout
+    assert "--finish TK-001" in r.stdout
+
+
+def test_start_packet_carries_the_task_brief(proj, ctx_env, python_cmd):
+    ctx, _ = proj
+    card = cards.get(ctx, "TK-001")
+    cards.set_section(card, "Interfaces",
+                      "Consumes: booking.slots() -> list\nProduces: booking.book(slot: str) -> str")
+    cards.set_section(card, "Review focus", "- slot already taken (the happy path hides it)")
+    r = run(["--start", "TK-001"], ctx_env, python_cmd)
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    assert "booking.book(slot: str) -> str" in r.stdout
+    assert "slot already taken" in r.stdout

@@ -1,52 +1,6 @@
 ---
 name: cp-deployment
-description: "RUP Deployment Discipline (8/9). This skill covers the RUP **Deployment Discipline**: releasing the product and producing the user and training documentation. Use when the user says 'deploy, release notes, installation, user manual, training material' or needs the RUP deployment artifacts."
----
-
-# cp-deployment — RUP Deployment Discipline
-
-This skill covers the RUP **Deployment Discipline**: releasing the product and producing the user and training documentation.
-
-Grounded in *The Rational Unified Process: An Introduction* (3rd ed.), Philippe
-Kruchten. Part of the `rup` family — drive the whole lifecycle through
-`cp-orchestrator`, or run this discipline directly.
-
-## Agents (2)
-
-| Agent (slug) | Role | Artifacts |
-|--------------|------|-----------|
-| `deployment-manager` | Deployment Manager | Deployment Plan, Installation Material, Release Description / Release Notes |
-| `technical-writer` | Technical Writer | User Manual / User Documentation, Training Material |
-
-## Phase focus
-
-Construction → Transition
-
-## How to run this skill — you are the LLM
-
-This skill does not call any model: **you, the agent running it, produce the
-artifacts**. The script gives you the work packet and records your result.
-
-1. **Get the work packet** (read-only):
-
-   ```bash
-   python scripts/run.py "<briefing>" --phase <Inception|Elaboration|Construction|Transition>
-   python scripts/run.py --input briefing.md --phase Elaboration     # long briefings
-   ```
-
-   It prints the RUP roles of this discipline (goal, perspective, mission), the
-   **exact list of artifacts** you must write, the briefing, and the artifacts
-   already recorded in `.context/` that this discipline builds on (governance +
-   the earlier disciplines of the same phase).
-
-2. **Write ONE markdown document**: a `# <Role>` per role, and a level-2
-   heading `## <Artifact>` for every artifact listed. Follow the RUP conventions,
-   reuse names/IDs from the earlier artifacts, state assumptions explicitly.
-
-3. **Record it — mandatory** (the packet prints the exact command):
-
-   ```bash
-   python scripts/run.py --record doc.md --phase Elaboration "<briefing>"
+description: "Use when the user needs deployment planned: deployment plan and diagrams, release notes, user and support material, installation and rollout (RUP Deployment, 8/9)."
    cat doc.md | python scripts/run.py --record - --phase Elaboration --input briefing.md
    ```
 

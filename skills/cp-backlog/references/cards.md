@@ -14,6 +14,24 @@ Acceptance criteria get `ST-NNN/AC-n`: each `- ` bullet under
 `## Acceptance criteria` becomes `- **ST-NNN/AC-n**: <text>`. A task's
 `## Covers` lists those IDs; each must exist in the parent story.
 
+## Task brief — optional sections (ADR-0019)
+
+A task (or bug) may carry three more sections. `cp-build --start` prints the card
+as it is, so they travel with the work; the reviewer checks against them:
+
+- `## Interfaces` — what this task uses and what it hands on, with exact names:
+  `Consumes: booking.book(slot: str) -> Booking`,
+  `Produces: Booking.to_dict() -> dict`. A task's implementer sees only their own
+  task; this is how neighbouring tasks agree on names and types.
+- `## Constraints` — project-wide requirements copied verbatim from the story or
+  the requirements (version floors, dependency limits, naming and copy rules).
+  What is here binds the task even when no test exercises it.
+- `## Review focus` — the input classes or failure modes most likely to bite a
+  user and that no test of this task covers; one line each, most likely first.
+
+They are optional: a card without them is a card whose brief is only
+`Description` + `Target files` + `Covers`. They are never invented by the skill.
+
 ## File layout
 
 `.context/kanban/<column>/<ID>.md`, frontmatter keys in order: `id, type, title,

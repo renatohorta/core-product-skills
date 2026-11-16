@@ -16,8 +16,27 @@
 
 ## Delivery document
 
-Required sections: `What was done`, `Files changed`, `Tests`, `Red evidence`.
-Recommended: `Mutation` (shown to the reviewer; its absence is a warning).
+Required sections: `What was done`, `Files changed`, `Tests`, `Red evidence`,
+`Verification`. Recommended: `Mutation` and `Rulings` (shown to the reviewer; their
+absence is a warning).
+
+`## Verification` is the green run itself, on a commit anyone can check out
+(ADR-0019) — red evidence proves the test failed first, this proves it passes now:
+
+````markdown
+## Verification
+
+Command: python -m pytest -q
+Result: exit 0, 42 passed in 3.1s
+Commit: 9f2c1ab
+````
+
+`--finish` rejects a delivery without those three lines. Never write a command or
+a result you did not run.
+
+`## Rulings` records every place where you deviated from the card or the plan and
+why — one line each, `Ruling: <what you decided> — <why> — <what it costs if wrong>`.
+A deviation nobody recorded is a surprise for the reviewer.
 Each test is one line `- <path>::<test> — covers <ID>[, <ID>]`; red evidence is
 one `### <path>::<test>` block with a fenced output per test.
 
@@ -43,6 +62,13 @@ Booking endpoint that returns the booked slot.
 E   ImportError: cannot import name 'book' from 'app.booking'
 ```
 ````
+
+## Task brief
+
+`--start` prints the card, so the brief is the card: `Description`, `Target files`,
+`## Covers`, plus `## Interfaces`, `## Constraints` and `## Review focus` when they
+exist (cp-backlog `references/cards.md`). Read them before writing the first test:
+exact names, signatures and values come from there, not from memory.
 
 ## Mutation of the changed lines
 

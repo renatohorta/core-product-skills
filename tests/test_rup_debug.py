@@ -13,7 +13,9 @@ STORY = ("## User story\n\nAs a patient I want to book so that I save time.\n\n"
          "## Acceptance criteria\n\n- Patient picks a slot\n\n"
          "## Definition of Done\n\n- Tests pass\n")
 BUG_DOC = "## Symptom\n\nBooking twice crashes.\n\n## Reproduction\n\n1. book 09:00\n2. book 09:00\n"
-DIAG = "## Root cause\n\nThe slot set is never checked before insert.\n"
+DIAG = ("## Root cause\n\nThe slot set is never checked before insert.\n\n"
+        "Evidence: with DEBUG=1 the INSERT log line shows the same slot id twice, and the\n"
+        "boundary check in booking.book() never runs before the insert.\n")
 TEST_SRC = ("from app.booking import book\n\n\n"
             "def test_double_booking_bug_001():\n    assert book('09:00') == 'booked'\n")
 TEST_NO_ID = ("from app.booking import book\n\n\n"
@@ -26,7 +28,9 @@ def delivery(ref, covers="BUG-001"):
     return (f"## What was done\n\nChecked the slot set before insert.\n\n"
             f"## Files changed\n\n- app/booking.py\n\n"
             f"## Tests\n\n- {ref} — covers {covers}\n\n"
-            f"## Red evidence\n\n### {ref}\n\n```\nE   AssertionError\n```\n")
+            f"## Red evidence\n\n### {ref}\n\n```\nE   AssertionError\n```\n\n"
+            "## Verification\n\nCommand: python -m pytest -q\nResult: exit 0, 1 passed\n"
+            "Commit: deadbee\n")
 
 
 @pytest.fixture
@@ -91,7 +95,8 @@ def test_diagnose_records_root_cause(proj, ctx_env, python_cmd):
     assert "diagnosed" in card.body
     # re-diagnose replaces and logs
     r = dbg(["--diagnose", "BUG-001", "--doc", "-"], ctx_env, python_cmd,
-            stdin="## Root cause\n\nActually a race.\n")
+            stdin="## Root cause\n\nActually a race.\n\n"
+                  "Evidence: two concurrent requests share the slot id in the INSERT log.\n")
     assert r.returncode == EXIT_OK, r.stdout + r.stderr
     card = cards.get(ctx, "BUG-001")
     assert card.status == "3-doing" and card.body.count("## Root cause") == 1
@@ -197,3 +202,13 @@ def test_diagnose_sets_the_branch(ctx_env, python_cmd):
 def test_open_protocol_says_start_only_when_not_diagnosed(ctx_env, python_cmd):
     r = run_skill("cp-debug", ["--open", "--title", "T", "--doc", "-"], ctx_env, python_cmd, stdin=BUG_DOC)
     assert "(only if not diagnosed)" in r.stdout
+
+
+def test_root_cause_without_evidence_is_rejected(proj, ctx_env, python_cmd):
+    ctx, _ = proj
+    open_bug(ctx_env, python_cmd)
+    r = dbg(["--diagnose", "BUG-001", "--doc", "-"], ctx_env, python_cmd,
+            stdin="## Root cause\n\nIt is a race.\n")
+    assert r.returncode == EXIT_USAGE, r.stdout + r.stderr
+    assert "Evidence" in r.stdout
+    assert cards.get(ctx, "BUG-001").status == "1-backlog"

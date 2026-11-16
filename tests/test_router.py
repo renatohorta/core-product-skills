@@ -134,7 +134,10 @@ def test_read_state_lists_board_and_open_bugs(tmp_path):
 def test_orchestrator_skill_md_is_the_front_door():
     text = (SKILLS_DIR / "cp-orchestrator" / "SKILL.md").read_text(encoding="utf-8")
     head = text.split("---")[1]
-    assert "FRONT DOOR" in head and "never has to name a skill" in head
+    description = next(l for l in head.splitlines() if l.startswith("description:"))
+    assert description.startswith('description: "Use when')      # trigger first (ADR-0019)
+    assert "Front door" in description
+    assert "never" in text and "cp-* skill" in text               # the user never names one
     assert "--route" in text
 
 

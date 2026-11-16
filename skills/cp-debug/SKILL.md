@@ -1,6 +1,6 @@
 ---
 name: cp-debug
-description: "Debug a bug the RUP way: open a BUG card, reproduce it, pin it with a failing regression test, find and record the root cause, then fix and deliver through cp-build. Use when the user reports a bug, a regression or unexpected behavior to fix."
+description: "Use when something is broken — a bug, a regression or unexpected behavior: open a BUG card, reproduce it, pin it with a failing regression test, record the root cause, then fix it through cp-build."
 ---
 
 # cp-debug — bugs: root cause before fix
@@ -17,9 +17,11 @@ runs your tests or git.
    It prints the protocol with the exact follow-up commands.
 2. Reproduce, then write a failing regression test whose name (or a comment
    above it) names the bug ID (`BUG-001`). Run it, save the red output.
-3. Find the root cause (`references/debugging.md`), not the symptom's location.
-   Record it: `python scripts/run.py --diagnose BUG-001 --doc FILE|-` with a
-   non-empty `## Root cause`. The card moves to `3-doing`.
+3. Find the root cause (`references/debugging.md`: four phases, no fix before
+   phase 1), not the symptom's location. Record it: `python scripts/run.py
+   --diagnose BUG-001 --doc FILE|-` with a `## Root cause` that also carries an
+   `Evidence:` line — the log line, failing input or component boundary that
+   proved it (ADR-0019). The card moves to `3-doing`.
 4. Fix, get the test green, then deliver with
    `cp-build --finish BUG-001 --delivery FILE|-`. `cp-build` refuses a bug
    without `## Root cause` and requires a test that references the bug ID.

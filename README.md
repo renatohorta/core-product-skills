@@ -189,9 +189,11 @@ agent ──► run.py --record doc.md --phase P     ─► validates every "## 
   `.context/kanban/<column>/<ID>.md` and the roadmap in `.context/roadmap/`. It
   generates `docs/06-roadmap.md` and `docs/06-board.md`. `cp-build`, `cp-debug`
   and `cp-review` move a task from `3-doing` through review.
-- **Test-value audit.** `cp-test --audit` prints the A0–A8 protocol: baseline,
+- **Test-value audit.** `cp-test --audit` prints the A0–A9 protocol: baseline,
   static audit, mutation testing of the risky modules in disposable copies,
-  survivor triage, and cards for the real gaps (ADR-0016).
+  survivor triage, cards for the real gaps, and **audit closure** — every source
+  module owes a verdict (audited, waived with its reason, blocked, never audited)
+  before a score may call the tests fine (ADR-0016, ADR-0018).
 - **Which `.context/`.** The skills use `--context-dir`, else
   `$RUP_CONTEXT_DIR`, else the nearest `.context/` up to the git root. Curated
   docs are never touched.
@@ -236,7 +238,8 @@ core-poroduct-skills/
     │   ├── roadmap.py        # releases, iterations, generated views
     │   ├── testcheck*.py     # test-value checks (Python ast, JS/TS patterns)
     │   ├── testaudit.py      # static audit of a whole suite
-    │   └── mutation.py       # mutation testing: mutants, runner, report, triage
+    │   ├── mutation.py       # mutation testing: mutants, runner, report, triage
+    │   └── auditclosure.py   # audit closure: which source modules owe a verdict
     ├── cp-orchestrator/      # front door (--route), governance, iteration protocol, UCP
     ├── cp-<discipline>/      # SKILL.md + scripts/run.py (roles as data) + references/
     └── cp-{context,discover,backlog,build,debug,review}/   # execution skills

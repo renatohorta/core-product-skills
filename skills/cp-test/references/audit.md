@@ -20,11 +20,13 @@ prints the protocol with the exact commands for the project.
 | A4 Choose modules | By business risk (Risk List, rules, security, money, concurrency) and size, justified | Test Value Assessment |
 | A5 Mutation | Isolated copies, env per worker, the module's tests first, timeout, resumable | `mutation/results.jsonl`, `state.json` |
 | A6 Triage | Every survivor: equivalent / real gap / dead code / out of scope | `mutation/report.md`, `triage.md` |
-| A7 Action | Real gap → task card + test, re-run: the mutant must die. Dead code → CR | cards (`cp-backlog`), CRs (`cp-ccm`) |
-| A8 Record | Test Evaluation Summary, Test Value Assessment, Test Log | `docs/<phase>/cp-test.md` |
+| A7 Closure | Every source module gets a verdict: audited / waived (with its reason) / blocked / never audited | `closure.md`, `closure-waivers.json` (`--audit-closure`, `--waive`) |
+| A8 Action | Real gap → task card + test, re-run: the mutant must die. Dead code → CR. Silent module → mutate it or waive it | cards (`cp-backlog`), CRs (`cp-ccm`) |
+| A9 Record | Test Evaluation Summary, Test Value Assessment, Test Log | `docs/<phase>/cp-test.md` |
 
-The cp-test packet embeds `baseline.md`, `static-audit.md`, `report.md` and
-`triage.md` when they exist, so the artifacts use measured numbers.
+The cp-test packet embeds `baseline.md`, `static-audit.md`, `report.md`,
+`triage.md` and `closure.md` when they exist, so the artifacts use measured
+numbers.
 
 ## profile.json
 
@@ -38,7 +40,9 @@ The cp-test packet embeds `baseline.md`, `static-audit.md`, `report.md` and
   "test_map": {"src/apps/orders": ["src/apps/orders/tests", "src/apps/common/tests"]},
   "priority": {"src/apps/orders/pricing.py": ["src/apps/orders/tests/test_pricing.py"]},
   "timeout_factor": 3,
-  "timeout_extra_s": 30
+  "timeout_extra_s": 30,
+  "source_extensions": [".py"],
+  "audit_exclude": ["src/legacy/**"]
 }
 ```
 
@@ -47,6 +51,9 @@ The cp-test packet embeds `baseline.md`, `static-audit.md`, `report.md` and
 - `killed_exit_codes`: only "a test failed" counts as killed. pytest exits 2/4/5
   on interruption, usage and empty collection: those are **errors**, reported
   apart and left out of the score.
+- `source_extensions`: the audit's declared surface — which files owe a mutation
+  verdict (`--audit-closure`). `audit_exclude` takes globs out of that surface
+  (`src/legacy/**`); prefer a reasoned waiver over a silent exclusion.
 
 ## Mutants (Python, `ast`)
 
@@ -84,6 +91,42 @@ mutants after a time box; run the same command again to resume.
 `--mutation-status` shows progress from `.context/tests/mutation/`. Do not
 switch branches while it runs: run it from a dedicated worktree, or let it
 finish.
+
+## Audit closure (A7) — did the audit cover what it claims?
+
+A mutation score is a number over the modules that were mutated. Saying "87%"
+while forty modules were never touched is a clean-looking report that quietly
+omits what nobody looked at — the same failure mode a coverage report has, one
+level up.
+
+`--audit-closure` builds the ledger: every source module of the declared surface
+(`source_extensions`, minus test code, minus `copy_ignore` trees, minus
+`audit_exclude`) gets exactly one verdict.
+
+| Verdict | Means | Closes? |
+|---|---|---|
+| `audited` | at least one mutant was graded (killed / timeout / survived) | ✅ |
+| `waived` | an explicit `--waive <glob> --reason "…"` | ✅ (listed in the report) |
+| `blocked` | mutants ran but none was graded (all `error<N>` / `invalid`) | ❌ gap |
+| `never_audited` | no mutant has a result | ❌ gap |
+
+While any module is silent the command exits `1`, and `closure.md` states in the
+report's own words that the audit did not reach full coverage, listing the gaps —
+generated from the ledger, never hand-written. Cover a gap with
+`--mutate --files <module>`; waive it when it genuinely owes nothing (generated
+code, a vendored shim, a file with no behaviour of its own), and the reason ships
+with the report.
+
+Rules:
+
+- **A waiver is a decision, not a cleanup.** The reason is mandatory (12+
+  characters) and appears in `closure.md` and in the Test Value Assessment.
+- **`blocked` is not covered.** Mutants that only errored prove nothing about the
+  tests; they are reported apart, exactly like `error<N>` mutants in the score.
+- **Mutating outside the declared surface is a profile bug**, not extra credit:
+  `closure.md` lists files with results that `source_extensions` does not cover.
+- Run it *after* A6 (triage), because a module whose survivors were never
+  classified is audited but not finished.
 
 ## Mutation in the daily flow
 

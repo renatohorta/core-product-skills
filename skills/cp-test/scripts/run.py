@@ -21,6 +21,8 @@ Test-value audit (ADR-0016) — measure whether the tests can catch a bug:
   python run.py --mutation-status             # progress of a (long) run
   python run.py --mutation-report             # A6: report.md + triage.md skeleton
   python run.py --triage-check                # A6: every survivor classified, with reasons
+  python run.py --audit-closure               # A7: which source modules the audit never reached
+  python run.py --waive 'src/legacy/**' --reason "…"   # A7: declare a surface out of the audit
   python run.py --show-mutant a.py:IDX        # diff of one mutant
 """
 
@@ -38,7 +40,7 @@ for _root in (_SKILL_DIR.parent, _SKILL_DIR.parent.parent):
             sys.path.insert(0, str(_root))
         break
 
-from _shared import context, discipline, mutation, testaudit  # noqa: E402
+from _shared import auditclosure, context, discipline, mutation, testaudit  # noqa: E402
 from _shared.rup import EXIT_USAGE, setup_console  # noqa: E402
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -114,16 +116,22 @@ SPEC["instructions"] = [
     "Without an audit, write `not measured` and recommend the `--audit` run.",
     "The Test Evaluation Summary compares coverage × mutation score per module, lists the "
     "worst modules and the survivors per triage class (from the measured evidence below).",
+    "A mutation score covers only the modules that were mutated: state the audit's own "
+    "coverage from `closure.md` (`--audit-closure`) — how many source modules reached a "
+    "verdict, which were waived and why (`--waive`), and which were never audited. Never "
+    "present a score over a subset as a statement about the code it did not touch.",
 ]
 SPEC["context_files"] = [str(TESTS_DIR / "baseline.md"), str(TESTS_DIR / "static-audit.md"),
-                         str(MUTATION_DIR / "report.md"), str(MUTATION_DIR / "triage.md")]
+                         str(MUTATION_DIR / "report.md"), str(MUTATION_DIR / "triage.md"),
+                         str(TESTS_DIR / auditclosure.REPORT)]
 
 # ═════════════════════════════════════════════════════════════════════════
-# Test-value audit (ADR-0016): protocol A0–A8 and its deterministic tools
+# Test-value audit (ADR-0016) + audit closure (ADR-0018): protocol A0–A9
 # ═════════════════════════════════════════════════════════════════════════
 
 AUDIT_MODES = ("audit", "profile_template", "static_audit", "mutants", "mutate",
-               "mutation_status", "mutation_report", "triage_check", "show_mutant")
+               "mutation_status", "mutation_report", "triage_check", "audit_closure",
+               "waive", "show_mutant")
 
 
 def _me(*args) -> str:
@@ -143,7 +151,7 @@ def audit_protocol(args, context_dir) -> None:
         (["--budget", args.budget] if args.budget else [])
     ctx_tests = Path(context_dir) / TESTS_DIR
     briefing = (discipline.read_briefing(args, required=False) or "").strip()
-    print("# Test-value audit — protocol A0–A8\n")
+    print("# Test-value audit — protocol A0–A9\n")
     print(f"- Project: `{root}`\n- Evidence goes to: `{ctx_tests}`\n- Commit: "
           f"`{mutation.head_sha(root)[:12] or 'unknown (no .git)'}`")
     if briefing:
@@ -181,12 +189,22 @@ def audit_protocol(args, context_dir) -> None:
          f"`{_me('--mutation-report', *cd)}` → `report.md` + `triage.md`. Classify every "
          "survivor (equivalent / real gap / dead code / out of scope) with its reason, then "
          f"`{_me('--triage-check', *cd)}` until it passes."),
-        ("A7 Action",
+        ("A7 Closure",
+         "A mutation score covers only the modules you mutated. "
+         f"`{_me('--audit-closure', *cd)}` lists every source module in the declared surface "
+         "(`source_extensions` minus tests and `audit_exclude`) with its verdict: audited, "
+         "waived, blocked (mutants ran but none was graded) or never audited. It writes "
+         f"`{ctx_tests / auditclosure.REPORT}` and exits `1` while any module is silent — "
+         "cover it, or waive it with the reason: "
+         f"`{_me('--waive', 'src/legacy/**', '--reason', '<why this surface owes no verdict>', *cd)}`. "
+         "Waiving is a decision, not a cleanup: the reason goes into the report."),
+        ("A8 Action",
          "Real gap → a task card with the test to write: "
          "`cp-backlog --new task --source cp-test#mutation:<module>:<line> …`; write the test, "
          f"then `{_me('--mutate', '--rerun-survivors', '--files', *files, *cd)}`: the mutant must "
-         "die. Dead code → a simplification CR (cp-ccm), not a test."),
-        ("A8 Record",
+         "die. Dead code → a simplification CR (cp-ccm), not a test. Never-audited or blocked "
+         "module → `--mutate --files`, or a waiver with its reason."),
+        ("A9 Record",
          "Write the cp-test document (its packet embeds the evidence above): Test Evaluation "
          "Summary with coverage × mutation per module, Test Value Assessment, Test Log with "
          f"command/SHA/duration. Packet: `{_me(briefing or '<briefing>', '--phase', args.phase, *cd)}`"),
@@ -208,12 +226,12 @@ def _write(context_dir, rel: Path, text: str) -> Path:
 
 
 def run_audit_mode(args, context_dir) -> int:
-    root = project_root_of(args, context_dir)
-
-    if args.profile_template:
+    if args.profile_template:          # needs no .context/, no project: print and stop
         print(json.dumps(mutation.PROFILE_TEMPLATE, indent=2))
         print("\n" + mutation.TEMPLATE_HELP)
         return 0
+
+    root = project_root_of(args, context_dir)
 
     if args.audit:
         audit_protocol(args, context_dir)
@@ -257,6 +275,44 @@ def run_audit_mode(args, context_dir) -> int:
         print(text)
         print(f"🗂️  Report: {path}\n🗂️  Triage: {triage} ({added} new survivor row(s) to classify)")
         context.append_event(context_dir, skill="cp-test", what="mutation report generated")
+        return 0
+
+    if args.waive:
+        context.ensure_writable(context_dir)
+        ledger = Path(context_dir) / TESTS_DIR
+        try:
+            entry = auditclosure.add_waiver(ledger, args.waive, args.reason or "")
+        except ValueError as e:
+            discipline.fail(str(e))
+        print(f"Waived `{entry['pattern']}` — {entry['reason']}")
+        print(f"🗂️  {auditclosure.waivers_path(ledger)}")
+        context.append_event(context_dir, skill="cp-test",
+                             what=f"audit surface waived: {entry['pattern']}")
+        return 0
+
+    if args.audit_closure:
+        context.ensure_writable(context_dir)
+        profile_path = Path(args.profile or (Path(context_dir) / PROFILE))
+        try:
+            profile = mutation.load_profile(profile_path) if profile_path.is_file() else {}
+        except mutation.ProfileError as e:
+            discipline.fail(str(e))
+        ledger = Path(context_dir) / TESTS_DIR
+        ev = auditclosure.evaluate(root, _out_dir(context_dir), ledger, profile)
+        text = auditclosure.render(ev, project=root.name,
+                                   sha=mutation.head_sha(root)[:12])
+        path = _write(context_dir, TESTS_DIR / auditclosure.REPORT, text)
+        print(text)
+        print(f"🗂️  Written to {path}")
+        context.append_event(context_dir, skill="cp-test",
+                             what=f"audit closure: {ev['counts']['audited']} audited, "
+                                  f"{ev['counts']['waived']} waived, {len(ev['gaps'])} gap(s)")
+        if not ev["clean"]:
+            print(f"\n{len(ev['gaps'])} module(s) with no verdict. Cover them with `--mutate "
+                  f"--files …`, or waive them (`--waive <path> --reason \"…\"`) — a waiver is "
+                  "a decision recorded in the report, not a silent omission.")
+            return EXIT_USAGE
+        print("Audit closure OK: every source module reached a verdict or carries a waiver.")
         return 0
 
     if args.triage_check:
@@ -331,6 +387,12 @@ def main(argv=None) -> int:
     a.add_argument("--mutation-report", action="store_true",
                    help="write report.md and the triage.md skeleton")
     a.add_argument("--triage-check", action="store_true", help="validate triage.md")
+    a.add_argument("--audit-closure", action="store_true",
+                   help="A7: per source module, did the audit reach a verdict? writes "
+                        "closure.md and fails while any module is silent")
+    a.add_argument("--waive", metavar="PATH|GLOB",
+                   help="A7: declare a surface out of the audit, with --reason")
+    a.add_argument("--reason", help="why that surface owes no mutation verdict (with --waive)")
     a.add_argument("--show-mutant", metavar="FILE:IDX", help="diff of one mutant")
     a.add_argument("--files", nargs="+", metavar="FILE", help="modules, relative to the project root")
     a.add_argument("--lines", action="append", metavar="FILE:START-END",

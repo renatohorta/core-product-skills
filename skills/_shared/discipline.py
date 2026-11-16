@@ -28,6 +28,7 @@ import shlex
 import subprocess
 import sys
 from pathlib import Path
+from typing import NoReturn
 
 from _shared import context as ctx
 from _shared.rup import (DISCIPLINES, EXIT_USAGE, MAX_PRIOR_ARTIFACT_CHARS,
@@ -55,7 +56,7 @@ def cmdline(args):
     return " ".join(shlex.quote(a) for a in args)
 
 
-def fail(message, code=EXIT_USAGE):
+def fail(message, code=EXIT_USAGE) -> NoReturn:
     print(f"❌ Error: {message}")
     sys.exit(code)
 

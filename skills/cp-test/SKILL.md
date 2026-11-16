@@ -61,7 +61,7 @@ artifacts**. The script gives you the work packet and records your result.
    command, commit SHA, duration and result of every execution in the Test Log.
    Never write a number you did not measure.
 
-## Test-value audit — do the tests catch bugs? (ADR-0016)
+## Test-value audit — do the tests catch bugs? (ADR-0016, ADR-0018)
 
 Coverage says which lines ran, not whether a test would notice a wrong line.
 When the question is the value of the tests, run the audit protocol:
@@ -83,7 +83,17 @@ modules by risk, mutate, triage the survivors, act (cards/CRs), record. The tool
 | `--mutation-status` | Progress of a long run |
 | `--mutation-report` | `tests/mutation/report.md` (score per module, worst first) + `triage.md` rows for the survivors |
 | `--triage-check` | Fails until every survivor is classified with its reason and action |
+| `--audit-closure` | Which **source modules** the audit never reached → `tests/closure.md`; exits `1` while a module is silent (ADR-0018) |
+| `--waive PATH\|GLOB --reason "…"` | Declares a surface out of the audit — a decision with its reason, not a silent omission |
 | `--show-mutant F:IDX` | Diff of one mutant |
+
+A mutation score covers only the modules that were mutated. `--audit-closure`
+answers the other half — every source module (`profile.source_extensions`, minus
+tests and `audit_exclude`) needs a verdict: **audited**, **waived** with its reason,
+**blocked** (mutants ran, none was graded) or **never audited**. While any module
+is silent the command exits `1` and `closure.md` states, in the report's own words,
+that the audit did not reach full coverage. A score over a subset is never a
+statement about the code it did not touch.
 
 The mutation run executes the project's own test command (from the profile) in
 copies of the project: the original is never written, git is never run, and the

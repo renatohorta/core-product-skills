@@ -562,3 +562,53 @@ did not route a plain request.
 initialized before this decision get the new pointer note by running
 `cp-context --init` again (it only adds what is missing, plus the refresh).
 
+---
+
+## ADR-0018 — the audit owes a verdict for every module it discovered (audit closure)
+
+**Date**: 2026-11-16 · **Status**: Accepted
+
+**Context**: ADR-0016 gave cp-test a mutation score per module, and A6 triage
+forces a verdict for every survivor. What stayed silent is the surface the audit
+never touched: a report saying "mutation score 87%" over three modules reads as
+"the tests are fine" while forty modules were never mutated. That is the same
+failure mode ADR-0016 fixed for line coverage, one level up — and the most
+dangerous default a Test Value Assessment can have, because a clean-looking
+report implies the rest was checked. The pattern was proven in a sibling codebase
+(Claude-BugHunter, `engine/closure.py`): a hard closure gate where a discovered
+`(host, class)` pair owes a verdict, `blocked` is not covered, and the caveats in
+the report are generated from the ledger instead of being written by hand.
+
+**Decision**:
+
+- `cp-test --audit-closure` (step A7, between triage and action) builds the
+  ledger of the audit's own coverage: every source module in the declared surface
+  — `profile.source_extensions` (default `[".py"]`), minus test files, minus
+  `copy_ignore` trees, minus the new `profile.audit_exclude` globs — gets exactly
+  one verdict: `audited` (a mutant was graded), `waived` (explicit, with reason),
+  `blocked` (mutants ran, none was graded: all `error<N>`/`invalid`) or
+  `never_audited`.
+- The gate is hard: while any module is `blocked` or `never_audited` the command
+  exits `1` and writes `.context/tests/closure.md` with a "Not audited — do not
+  read as passing" section generated from the ledger.
+- The escape hatch is explicit and reasoned: `cp-test --waive <path|glob>
+  --reason "…"` records the decision in `.context/tests/closure-waivers.json`.
+  A reason under 12 characters is rejected. A waiver is a decision that ships in
+  the report, not a silent omission.
+- `closure.md` joins the evidence files the packet embeds, and the packet's
+  instructions require the Test Value Assessment to state the audit's own
+  coverage: a score over a subset is never a statement about the code it did not
+  touch.
+- Pure standard library (`_shared/auditclosure.py`, functions over
+  `results.jsonl` + the waivers file), testable without running a mutant.
+- Fixed along the way: `--profile-template` crashed (`TypeError` on `Path(None)`)
+  because the early return came after the project-root resolution, even though
+  A0 of the protocol points at it.
+
+**Consequences**: An audit that covers a subset now says so, and the Test Value
+Assessment cannot look cleaner than the work behind it. Projects with large
+surfaces will see `--audit-closure` fail until they either mutate the modules or
+waive them with a reason — that is the point, and the waiver file makes the
+trade-off auditable. The surface is declared in the profile, so non-Python
+projects declare their extensions instead of the module guessing.
+

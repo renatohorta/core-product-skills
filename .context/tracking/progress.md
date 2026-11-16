@@ -1,6 +1,21 @@
 # Project Progress — Core Product Skills
 
-> Last update: 2026-11-03.
+> Last update: 2026-11-16.
+
+## Audit closure — cp-test cannot look cleaner than the work behind it (ADR-0018, 2026-11-16)
+
+Source: the coverage-closure gate of Claude-BugHunter (`engine/closure.py`), ported
+to the test-value audit.
+
+| Change | Status | Date |
+|--------|--------|------|
+| `_shared/auditclosure.py`: surface from `profile.source_extensions`, verdicts audited / waived / blocked / never_audited, report generated from the ledger | ✅ Done | 2026-11-16 |
+| `cp-test --audit-closure` (A7, exits `1` while a module is silent) and `cp-test --waive PATH\|GLOB --reason "…"` (`closure-waivers.json`) | ✅ Done | 2026-11-16 |
+| Packet: `tests/closure.md` embedded; Test Value Assessment must state the audit's own coverage | ✅ Done | 2026-11-16 |
+| `profile.json`: `source_extensions`, `audit_exclude` | ✅ Done | 2026-11-16 |
+| Fixed `--profile-template` (crashed on `Path(None)` before printing) | ✅ Done | 2026-11-16 |
+| `references/audit.md` (A7 section), SKILL.md, READMEs, ADR-0018 | ✅ Done | 2026-11-16 |
+| Suite | ✅ 357 passed | 2026-11-16 |
 
 ## cp-test measures the value of the tests — ADR-0016 (2026-11-04)
 

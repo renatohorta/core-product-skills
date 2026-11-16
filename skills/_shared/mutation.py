@@ -204,6 +204,8 @@ PROFILE_TEMPLATE = {
     "workers": 0,
     "env": {"DB_NAME": "test_mut{worker}"},
     "copy_ignore": DEFAULT_IGNORE,
+    "source_extensions": [".py"],
+    "audit_exclude": [],
     "test_map": {"src/app": ["src/app/tests"]},
     "priority": {"src/app/service.py": ["src/app/tests/test_service.py"]},
     "timeout_factor": 3,
@@ -222,6 +224,10 @@ Fields of profile.json (paths relative to the project root):
   workers           parallel copies; 0 = CPU cores - 1
   env               extra env per worker; {worker} is the worker number (own DB!)
   copy_ignore       directory names not copied into the worker copies
+  source_extensions the audit's surface: which extensions owe a mutation verdict
+                    (default [".py"]) — see cp-test --audit-closure
+  audit_exclude     globs of source paths out of the audit surface, e.g. "src/legacy/**"
+                    (prefer a reasoned waiver: cp-test --waive … --reason …)
   test_map          source path prefix -> tests to run (longest prefix wins;
                     default: the whole suite)
   priority          source file -> tests to run first (default: test_<module>.py)

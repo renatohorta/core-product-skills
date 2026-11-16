@@ -24,7 +24,7 @@ source of truth and the only place agents read/write project context.
    discarded and rewritten on every `./scripts/install.sh`.
 2. **`_shared` is not a skill** — helpers (`rup.py`, `discipline.py`,
    `context.py`, `consent.py`, `frontmatter.py`, `cards.py`, `roadmap.py`,
-   `testcheck*.py`, `testaudit.py`, `mutation.py`, `router.py`); it goes to the agent's skills root, not to the category.
+   `testcheck*.py`, `testaudit.py`, `mutation.py`, `auditclosure.py`, `router.py`); it goes to the agent's skills root, not to the category.
    Every `run.py` looks for it next to the skill and one level up (Hermes).
 3. **Skill protocol** — `run.py "<briefing>" [--input F] [--phase P]
    [--context-dir D]` prints the work packet; the agent writes one document with
@@ -52,6 +52,13 @@ source of truth and the only place agents read/write project context.
 7. **Windows**: the skills force UTF-8 on stdout/stderr (`setup_console`).
 8. **Before committing**: `git status --short` (partial commits are the most
    common mistake here) and `.venv/bin/python -m pytest` (~5 s).
+9. **Git identity — personal profile, always**: this repository is a personal
+   project. Commits are authored as `Renato Sacramento Horta
+   <5257238+renatohorta@users.noreply.github.com>` and pushes authenticate as
+   the GitHub account `renatohorta`, never the Jusfy one. The repo-local config
+   already pins both (`user.name`/`user.email`, plus a local credential helper
+   that reads `gh auth token --user renatohorta`), so do not switch
+   `gh auth` globally and do not commit as `renato@jusfy.com.br`.
 
 <!-- rup-skills:start -->
 ## RUP skills — which one to use

@@ -23,7 +23,7 @@ and **21 roles** (1 orchestrator + 20 specialists).
 | `cp-requirements` | Requirements | 2 | `system-analyst`, `requirements-specifier` |
 | `cp-analysis-design` | Analysis & Design | 5 | `software-architect`, `designer`, `user-interface-designer`, `database-designer`, `capsule-designer` |
 | `cp-implementation` | Implementation | 2 | `system-integrator`, `implementer` |
-| `cp-test` | Test (+ test-value audit: static audit, mutation, triage — ADR-0016) | 4 | `test-manager`, `test-analyst`, `test-designer`, `tester` |
+| `cp-test` | Test (+ test-value audit: static audit, mutation, triage, closure — ADR-0016, ADR-0018) | 4 | `test-manager`, `test-analyst`, `test-designer`, `tester` |
 | `cp-ccm` | Configuration & Change Management | 2 | `configuration-manager`, `change-control-manager` |
 | `cp-deployment` | Deployment | 2 | `deployment-manager`, `technical-writer` |
 
@@ -72,7 +72,8 @@ skills/
 │   ├── testcheck*.py         # test-value checks of a delivery (Python ast, JS/TS patterns)
 │   ├── testaudit.py          # static audit of a whole suite
 │   ├── router.py             # front door: .context/ state + routes (--route)
-│   └── mutation.py           # mutants, parallel resumable runner, report, triage
+│   ├── mutation.py           # mutants, parallel resumable runner, report, triage
+│   └── auditclosure.py       # audit closure: a verdict per source module
 ├── cp-orchestrator/         # front door (--route), governance, iteration protocol, UCP
 │   ├── SKILL.md
 │   ├── scripts/run.py

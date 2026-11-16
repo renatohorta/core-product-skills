@@ -32,7 +32,9 @@ Commit: 9f2c1ab
 ````
 
 `--finish` rejects a delivery without those three lines. Never write a command or
-a result you did not run.
+a result you did not run. When the project is not a git repository (or the change
+is not committed yet), the honest value is `Commit: none — <why>`; the skill never
+runs git, so it cannot invent the SHA for you.
 
 `## Rulings` records every place where you deviated from the card or the plan and
 why — one line each, `Ruling: <what you decided> — <why> — <what it costs if wrong>`.

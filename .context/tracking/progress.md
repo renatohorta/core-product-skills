@@ -19,7 +19,8 @@ rejected the rest (hook, voice, duplicate process skills).
 | `cp-build --status [ID]`: resume map (delivery, verification, mutation, last history) | ✅ Done | 2026-11-16 |
 | `cp-build/references/dispatch.md`: subagent dispatch and reviewing its report | ✅ Done | 2026-11-16 |
 | `docs/04-transition/skill-testing.md`: behaviour testing of a skill change (RED baseline, minimal rule, loopholes, form) | ✅ Done | 2026-11-16 |
-| Suite | ✅ 426 passed | 2026-11-16 |
+| Behaviour test of the three new rules: 6 agents, old vs new skill text, graded by the real gates — 3/3 rules changed behaviour; found and fixed the `Commit:` rule (now accepts `none — <why>`) | ✅ Done | 2026-11-16 |
+| Suite | ✅ 430 passed | 2026-11-16 |
 
 ## Audit closure — cp-test cannot look cleaner than the work behind it (ADR-0018, 2026-11-16)
 

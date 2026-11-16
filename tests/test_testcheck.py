@@ -316,3 +316,33 @@ def test_assert_on_a_non_empty_literal_container_is_trivial(tmp_path):
         assert has_assert and trivial, body
     _, _, trivial, _ = _py_value("assert add(1, 2) == 3", tmp_path)
     assert not trivial
+
+
+# ─── verification gate (ADR-0019) ────────────────────────────────────────
+
+def test_verification_accepts_command_result_and_commit():
+    ok = "Command: pytest -q\nResult: exit 0, 3 passed\nCommit: deadbee"
+    assert testcheck.verification_problems(ok) == []
+
+
+def test_verification_commit_must_be_a_sha_or_an_honest_none():
+    bad = "Command: pytest -q\nResult: exit 0, 3 passed\nCommit: abc"
+    assert testcheck.verification_problems(bad), "a 3-char commit is not a SHA"
+    bare = "Command: pytest -q\nResult: exit 0, 3 passed\nCommit: none"
+    assert testcheck.verification_problems(bare), "a bare none needs its reason"
+    honest = ("Command: pytest -q\nResult: exit 0, 3 passed\n"
+              "Commit: none — the project is not a git repository")
+    assert testcheck.verification_problems(honest) == []
+
+
+def test_verification_without_command_or_result_is_reported():
+    problems = testcheck.verification_problems("Commit: deadbee")
+    assert len(problems) == 2
+    assert all("Verification" in p for p in problems)
+
+
+def test_rulings_must_state_what_why_and_cost():
+    assert testcheck.rulings_problems("- Ruling: x — y — z") != []
+    good = ("- Ruling: skipped the index — the table has 12 rows — a slow query \n"
+            "  would show up only past 100k rows")
+    assert testcheck.rulings_problems(good) == []

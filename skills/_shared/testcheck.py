@@ -124,7 +124,9 @@ def parse_delivery(text: str) -> Delivery:
 
 _COMMAND = re.compile(r"^\s*(?:command|comando)\s*:\s*(\S.*)$", re.I | re.M)
 _RESULT = re.compile(r"^\s*(?:exit|result|resultado|status)\s*:\s*(\S.*)$", re.I | re.M)
-_COMMIT = re.compile(r"^\s*(?:commit|sha)\s*:\s*([0-9a-f]{7,40})\b", re.I | re.M)
+_COMMIT = re.compile(r"^\s*(?:commit|sha)\s*:\s*(\S.*)$", re.I | re.M)
+_SHA = re.compile(r"^[0-9a-f]{7,40}\b", re.I)
+_NO_COMMIT = re.compile(r"^(?:none|n/?a|no git|sem git)\b[\s—–:\-]*([^\n]{10,})", re.I)
 
 _RULING = re.compile(r"^\s*[-*]\s+(.+)$", re.M)
 
@@ -154,8 +156,12 @@ def verification_problems(body: str) -> list:
         out.append("`## Verification` needs `Command: <the exact command you ran>`")
     if not _RESULT.search(body):
         out.append("`## Verification` needs `Result: <what the run said> (e.g. exit 0, 42 passed)`")
-    if not _COMMIT.search(body):
+    commit = _COMMIT.search(body)
+    if not commit:
         out.append("`## Verification` needs `Commit: <the SHA the run was made on>`")
+    elif not (_SHA.match(commit[1].strip()) or _NO_COMMIT.match(commit[1].strip())):
+        out.append("`## Verification` Commit must be a 7-40 character SHA, or "
+                   "`none — <why there is no commit>` (cp-build never runs git)")
     return out
 
 

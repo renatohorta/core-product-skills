@@ -652,7 +652,9 @@ there rather than asserted:
 - A delivery now needs `## Verification` — `Command:`, `Result:` and `Commit:` of
   the green run — on top of the red evidence (ADR-0016). `cp-build --finish`
   rejects it without those three lines, and `## Rulings` records every deviation
-  as `what — why — what it costs`.
+  as `what — why — what it costs`. `Commit:` accepts `none — <why>` when the
+  project is not a git repository: the first behavioural run showed the gate
+  demanding a SHA that cannot exist (skill-testing.md).
 - `cp-review` records **two** verdicts: `## Spec` (`pass`/`gap`) and `## Quality`
   (`approved`/`changes`). `approved` requires both; a thing the reviewer could not
   check is a `- Cannot verify:` finding, never a pass. `--package ID` writes

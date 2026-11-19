@@ -27,3 +27,16 @@ Claude-BugHunter
 
   No Claude-BugHunter files are redistributed verbatim; the reference content is
   original, condensed writing credited under CC BY 4.0.
+
+ui-ux-pro-max
+  Author: NextLevelBuilder (https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
+  License: MIT (see skills/cp-ui/vendor/uupm/LICENSE)
+  Version: 2.15.0 @ 2de1134 (skills/cp-ui/vendor/uupm/VERSION)
+
+  The skill `cp-ui` vendors its search engine and design-system generator:
+  - `skills/cp-ui/vendor/uupm/scripts/` (core.py, design_system.py, preview.py,
+    reasoning_contract.py) and `skills/cp-ui/vendor/uupm/data/` (CSV catalogs,
+    stacks, catalog-summary.json, data-provenance.json) are redistributed
+    verbatim and unmodified.
+  - `skills/cp-ui/` adapts its `ui-audit.mjs` and `references/checklist.md`
+    (marked as adapted where they appear).

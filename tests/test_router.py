@@ -9,7 +9,18 @@ from test_context_persistence import record, run_skill
 from _shared import consent, router
 
 ROUTE_KEYS = ["context", "discover", "requirements", "discipline", "governance", "iteration",
-              "estimate", "backlog", "build", "debug", "review", "test-audit", "status"]
+              "estimate", "backlog", "build", "debug", "review", "test-audit", "pentest",
+              "status"]
+
+
+def test_route_includes_the_pentest_operation_route(ctx_env, python_cmd):
+    """ST-001/AC-5: the orchestrator routes to cp-operation-pentest without the user naming it."""
+    r = run_skill("cp-orchestrator", ["--route", "will our code leak user data?"],
+                  ctx_env, python_cmd)
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    assert "| `pentest`" in r.stdout
+    assert "cp-operation-pentest" in r.stdout
+    assert "Security audit" in r.stdout            # the chain is present
 
 
 def _state(**kw):

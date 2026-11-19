@@ -17,6 +17,13 @@ Claude-BugHunter
   - The coverage-closure idea behind `cp-test --audit-closure` and the
     `(module × class)` coverage ledger in `_shared/auditclosure.py` /
     `_shared/pentest.py` is adapted from its `engine/closure.py` (see ADR-0018).
+  - The cross-session outcome ledger `_shared/memory.py` is adapted from its
+    `engine/memory.py` (reframed to deprioritise, never skip).
+  - The deterministic engagement scope `_shared/scope.py` (allowlist, deny-wins)
+    used by `cp-operation-pentest --infra` is adapted from its `engine/scope.py`
+    (see ADR-0021).
+  - The skills-on/off evaluation under `eval/` follows the design of its `eval/`
+    harness (detection vs false-positive measurement with an ablation).
 
   No Claude-BugHunter files are redistributed verbatim; the reference content is
   original, condensed writing credited under CC BY 4.0.

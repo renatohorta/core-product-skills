@@ -728,3 +728,36 @@ models (ADR-0012 forbids it).
 **Consequences**: Security review becomes a routed, defensive, white-box step that feeds the
 existing pipeline instead of a side report. A clean finding list can no longer hide unaudited
 code. The operation family has a pattern the next members follow. Pure stdlib, `python -S`.
+
+
+---
+
+## ADR-0021 — cp-operation-pentest --infra: a map-only, deterministic surface map
+
+**Date**: 2026-11-19 · **Status**: Accepted (extends ADR-0020)
+
+**Context**: ADR-0020 shipped the code-audit mode and deferred the running-infra mode. The
+team wants to audit its own running services too, defensively. BugHunter's engine maps a
+target deterministically (recon → arsenal map, $0, no agents) and only probes under an
+opt-in `--hunt`. Our repo is stdlib and offline-testable, so a crawler (gau/katana/httpx)
+does not belong in a skill.
+
+**Decision**: `cp-operation-pentest --infra SCOPE.json` is **map-only and deterministic**:
+
+- Scope is a JSON file (`name`, `in_scope`, `out_of_scope`, `seeds`, `endpoints`, optional
+  `openapi`), enforced by `_shared/scope.py` — an allowlist with **deny-wins** and
+  **default-deny** (exact host, `*.wildcard`, CIDR). Adapted from BugHunter's `engine/scope.py`.
+- The surface is **declared, not crawled**: endpoints come from the scope file's `endpoints`
+  or a parsed OpenAPI file. No network, no probing, nothing touched — safe by construction,
+  and testable offline.
+- Each in-scope endpoint is mapped to the vulnerability classes worth auditing via a
+  path/param-name heuristic (`pentest.infer_classes`, always non-empty); out-of-scope
+  endpoints are listed and not mapped. The map is a hint for the auditor, never a limit.
+- Findings are recorded exactly as in the code mode (`--record` → one BUG per confirmed
+  finding). Active probing (an opt-in `--hunt`, curl-first, read-only) and endpoint-level
+  coverage are a deferred future mode; the rest of BugHunter's engine (agent dispatch) stays
+  out (ADR-0012).
+
+**Consequences**: The team can point the skill at a scope file and get a scoped, safe map of
+which checks apply where, feeding the same pipeline. `_shared/scope.py` is now available to any
+cp-operation-* member. No crawler dependency; still pure stdlib, `python -S`.

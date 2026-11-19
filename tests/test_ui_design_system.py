@@ -162,3 +162,12 @@ def test_record_without_authorization_exits_5(ctx_env, python_cmd, tmp_path):
     r = _record(ctx_env, python_cmd, tmp_path, "--chosen-by", "Renato")
     assert r.returncode == EXIT_NEEDS_CONSENT
     assert not (_ctx(ctx_env) / "design-system").exists()
+
+
+def test_packet_flags_fallback_query_for_no_match(ctx_env, python_cmd):
+    r = ui(["--design-system", "zzqx plorf wibble"], ctx_env, python_cmd)
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    assert ("No match for the briefing's words — these directions come from a generic "
+            "fallback query ('saas dashboard'); ask the operator for product-type/industry "
+            "keywords and re-run.") in r.stdout
+    assert r.stdout.index("No match") < r.stdout.index("### Direction A")

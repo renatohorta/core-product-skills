@@ -31,6 +31,8 @@ mixes or edits, and the result becomes `.context/design-system/MASTER.md` + `tok
 6. **Replacing** an existing file needs `--force --reason "..."`; the reason goes into the
    decisions entry. `--force` alone exits 1.
 
+Format of MASTER.md, allowed roles, contrast pairs and how to present: `references/design-system.md`.
+
 ## Commands
 
 - `--design-system ["<briefing>"] [--product NAME] [--out DIR]` — packet.

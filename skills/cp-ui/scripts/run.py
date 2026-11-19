@@ -105,9 +105,9 @@ def print_packet(context_dir, briefing, product, out):
     note = ""
     if not ds:  # the vendored search is keyword-based: unknown words match nothing
         ds = compose(FALLBACK_QUERY, product)
-        note = (f"No style data matched the briefing words; the directions below use the "
-                f"generic query \"{FALLBACK_QUERY}\". Ask the operator for domain keywords "
-                f"(e.g. \"legal saas dashboard\") and re-run for closer matches.\n")
+        note = (f"No match for the briefing's words — these directions come from a generic "
+                f"fallback query ('{FALLBACK_QUERY}'); ask the operator for "
+                f"product-type/industry keywords and re-run.\n")
     if not ds:
         fail("no usable design direction for this briefing — try other words")
     out_dir = Path(out) if out else Path(tempfile.mkdtemp(prefix="cp-ui-"))

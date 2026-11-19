@@ -9,7 +9,6 @@ Usage:
 
 import argparse
 import sys
-from datetime import datetime
 from pathlib import Path
 
 # _shared/ sits in the skills root: next to this skill (repo, Claude Code) or one
@@ -108,7 +107,7 @@ def start(context_dir, card_id) -> None:
         fail(f"{card_id} is in {card.status}; --start needs {', '.join(STARTABLE)}")
     cards.set_meta(card, "branch", cards.branch_name(card))
     if card.type == "bug" and card.meta.get("source") == "cp-ui":
-        cards.set_meta(card, "ui_verify_after", datetime.now().isoformat(timespec="seconds"))
+        cards.set_meta(card, "ui_verify_after", uicheck.now_utc())
     card = cards.move(context_dir, card_id, "3-doing", "started")
     story = parent_of(context_dir, card)
     phase = packet_phase(context_dir, card)
@@ -159,13 +158,7 @@ def finish(context_dir, card_id, source, project_root) -> None:
         fail(f"{card_id} has no parent story")
     text = read_document(source).strip()
     delivery = testcheck.parse_delivery(text)
-    verify = None
-    if card.type == "bug" and card.meta.get("source") == "cp-ui":
-        rec = uicheck.verify_record(context_dir, card.id)
-        after = str(card.meta.get("ui_verify_after", ""))
-        if (rec and rec.get("result") == "pass" and after
-                and str(rec.get("at", "")) >= after):
-            verify = rec
+    verify = uicheck.ui_verified(context_dir, card)
     problems = testcheck.check_delivery(delivery, card, story, Path(project_root),
                                         ui_verified=verify is not None)
     if problems:

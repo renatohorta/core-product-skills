@@ -154,6 +154,37 @@ def _read(path: Path):
         return None
 
 
+def _excluded(rel: str, exclude) -> bool:
+    return any(_matches(p, rel) for p in (exclude or []) if p)
+
+
+def scannable(project_root, rel, exclude, design_system, rule=None):
+    """Why `scan` would not look at `rel` (None when it would). Uses the scanner's own
+    predicates so a verify cannot pass on a file the scanner never reads."""
+    rel = file_of(rel)
+    if rel == PROJECT:
+        return None
+    root = Path(project_root)
+    path = root / rel
+    if not path.is_file():
+        return f"{rel} does not exist under the project root"
+    parts = rel.split("/")
+    if any(d in IGNORE_DIRS for d in parts[:-1]):
+        return f"{rel} is in an ignored directory"
+    if not rel.lower().endswith(UI_EXTENSIONS):
+        return f"{rel} is not a UI file the scanner reads ({', '.join(UI_EXTENSIONS)})"
+    if _excluded(rel, exclude):
+        return f"{rel} is excluded by the profile"
+    if _read(path) is None:
+        return f"{rel} is unreadable or larger than {MAX_BYTES} bytes"
+    if rule == "raw-color":
+        if design_system is None:
+            return "raw-color needs a design system (none recorded): it cannot be re-checked"
+        if _is_token_file(rel, design_system.get("token_files", []) or []):
+            return f"{rel} is a token file: raw-color is not scanned there"
+    return None
+
+
 def _iter_files(root: Path, exclude, extra_exts=(), subpath=""):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in IGNORE_DIRS)
@@ -164,7 +195,7 @@ def _iter_files(root: Path, exclude, extra_exts=(), subpath=""):
             rel = path.relative_to(root).as_posix()
             if subpath and not (rel == subpath or rel.startswith(subpath + "/")):
                 continue
-            if any(_matches(p, rel) for p in exclude if p):
+            if _excluded(rel, exclude):
                 continue
             yield path, rel
 
@@ -671,6 +702,22 @@ def run_visual(project_root, profile: dict):
     return f"ran ({len(data['viewports'])} viewports)", findings
 
 
+def report_viewports(project_root, profile) -> list:
+    """Viewport names of the report the last `run_visual` just wrote (names only)."""
+    cfg = (profile or {}).get("visual_audit") or {}
+    try:
+        data = json.loads((Path(project_root) / str(cfg.get("report")
+                                                    or ".ui-audit/report.json")).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    out = []
+    for v in data.get("viewports", []) if isinstance(data, dict) else []:
+        name = v.get("name") if isinstance(v, dict) else v
+        if isinstance(name, str):
+            out.append(name)
+    return out
+
+
 def visual_location(v: dict) -> str:
     return f"{v['viewport']} {v['selector']}".strip()
 
@@ -760,10 +807,40 @@ def verify_record(context_dir, bug_id):
     return data if isinstance(data, dict) else None
 
 
-def write_verify_record(context_dir, bug_id, rule, result, evidence) -> dict:
+def now_utc() -> str:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def parse_ts(value):
+    """A timezone-aware datetime, or None (naive or unparsable values are not trusted)."""
     from datetime import datetime
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except ValueError:
+        return None
+    return dt if dt.tzinfo is not None and dt.utcoffset() is not None else None
+
+
+def ui_verified(context_dir, card):
+    """The verify record when it proves this cp-ui BUG's fix, else None: same bug, same
+    rule as the card's current ui_key, result pass, and strictly later than the start."""
+    if card.type != "bug" or card.meta.get("source") != SOURCE:
+        return None
+    rule = str(card.meta.get("ui_key", "")).partition("::")[0]
+    rec = verify_record(context_dir, card.id)
+    if not rule or not rec or rec.get("bug") != card.id or rec.get("rule") != rule \
+            or rec.get("result") != "pass":
+        return None
+    after, at = parse_ts(card.meta.get("ui_verify_after", "")), parse_ts(rec.get("at", ""))
+    if after is None or at is None or not at > after:
+        return None
+    return rec
+
+
+def write_verify_record(context_dir, bug_id, rule, result, evidence) -> dict:
     rec = {"bug": bug_id, "rule": rule, "result": result,
-           "at": datetime.now().isoformat(timespec="seconds"), "evidence": evidence}
+           "at": now_utc(), "evidence": evidence}
     path = verify_path(context_dir, bug_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(rec, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
@@ -773,9 +850,13 @@ def write_verify_record(context_dir, bug_id, rule, result, evidence) -> dict:
 def verify_static(context_dir, project_root, exclude, rule, file):
     """(result, evidence): re-scan and look for non-dismissed candidates of rule in file."""
     from _shared import uikit
-    cands, _ = scan(project_root, exclude, uikit.load_design_system(context_dir))
-    dismissed = load_dismissals(context_dir)
+    ds = uikit.load_design_system(context_dir)
     want = file_of(file)
+    why = scannable(project_root, want, exclude, ds, rule)
+    if why:
+        return "fail", f"cannot re-check: {why}"
+    cands, _ = scan(project_root, exclude, ds)
+    dismissed = load_dismissals(context_dir)
     left = [c for c in cands if c.rule == rule and file_of(c.file) == want
             and candidate_key(c) not in dismissed]
     if not left:
@@ -788,6 +869,9 @@ def verify_visual(project_root, profile, check, viewport):
     status, findings = run_visual(project_root, profile)
     if not status.startswith("ran"):
         return "fail", status
+    seen = report_viewports(project_root, profile)
+    if viewport not in seen:
+        return "fail", f"viewport {viewport} not exercised (report has: {', '.join(seen) or 'none'})"
     left = [v for v in findings if v["check"] == check and v["viewport"] == viewport]
     if not left:
         return "pass", f"{status}: no `{check}` in {viewport}"

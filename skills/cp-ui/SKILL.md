@@ -71,6 +71,8 @@ Audit commands: `--audit ["<scope>"] [--path SUB]` — packet · `--audit --reco
 
 Verify a fix: `--audit --verify BUG-NNN [--visual] [--evidence PATH]` re-checks only that BUG's rule on its file (the `ui_key` of the card). Static rules re-scan (dismissed candidates do not count); visual rules need `--visual` too (the product's command runs again); checklist rules need `--evidence PATH`, an existing file (relative to the project root or absolute). It writes `.context/ui/verify/BUG-NNN.json` (`bug`, `rule`, `result`, `at`, `evidence`), exit 0 on pass and 1 on fail. `cp-build --finish` accepts a passing record made after `--start` instead of a regression test, only for BUGs opened by cp-ui.
 
+Trust model: verify re-checks what the scanner, the visual audit or the evidence can show (a file the scanner cannot read, an excluded one, a missing design system for `raw-color`, or a viewport the report never exercised is a `fail`, never a pass); records are not tamper-proof, so reviewers read them (cp-review shows `Re-checked by cp-ui`). Timestamps are UTC with offset; a record counts only if strictly later than `cp-build --start`, for the same BUG and rule. When a BUG is re-checked, the tests listed in the delivery need not name the BUG ID (listed tests are still validated). A confirmed static finding must match a scanner candidate at `--record`; what the scanner cannot see is filed as `checklist:<id>`.
+
 ### Visual audit (optional)
 
 Off by default (`visual: not configured`). To enable it in your product:

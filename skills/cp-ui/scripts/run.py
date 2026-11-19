@@ -367,6 +367,18 @@ def verify_bug(context_dir, bug_id, visual_opt_in, evidence):
         if not path.is_file():
             fail(f"--evidence {evidence}: not an existing file")
         result, ev = "pass", str(evidence)
+        try:
+            path.resolve().relative_to(root.resolve())
+        except ValueError:
+            result, ev = "fail", f"evidence {evidence} is outside the project root"
+        else:
+            after = uicheck.parse_ts(card.meta.get("ui_verify_after", ""))
+            if after is None:
+                result, ev = "fail", ("the BUG has no ui_verify_after: start it with "
+                                      "cp-build --start first")
+            elif path.stat().st_mtime < after.timestamp():
+                result, ev = "fail", (f"evidence {evidence} is older than the start of the fix "
+                                      f"({card.meta.get('ui_verify_after')})")
     else:
         result, ev = uicheck.verify_static(context_dir, root, excludes_of(context_dir),
                                            rule, file)
@@ -408,9 +420,26 @@ def record_audit(context_dir, source, by, subpath=""):
     uicheck.record_dismissals(context_dir, findings, (by or "").strip() or "agent", cands)
 
     groups = {}
+    unmatched = []
     for f in findings:
-        if f.confirmed:
-            groups.setdefault(uicheck.group_key(f), []).append(f)
+        if not f.confirmed:
+            continue
+        key = uicheck.group_key(f)
+        if f.rule.strip() in uicheck.CHECKS:
+            cand, err = uicheck.match_candidate(f, cands)
+            if err:
+                unmatched.append(err)
+                continue
+            key = f"{cand.rule}::{cand.file}"  # the scanner's normalized file
+        groups.setdefault(key, []).append(f)
+    if unmatched:
+        print("Audit document rejected (a confirmed static finding must match a scanner "
+              "candidate, or --verify could never re-check it):")
+        for e in unmatched:
+            print(f"- {e}")
+        print("Fix the Location (path:line), or file what the scanner cannot see as "
+              "`Rule: checklist:<id>`.")
+        sys.exit(1)
     open_bugs = uicheck.open_bugs_by_key(context_dir)
     results = []  # (key, group, card id, created?)
     for key, group in groups.items():

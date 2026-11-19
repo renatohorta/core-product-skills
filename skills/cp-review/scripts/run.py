@@ -24,7 +24,7 @@ for _root in (_SKILL_DIR.parent, _SKILL_DIR.parent.parent):
             sys.path.insert(0, str(_root))
         break
 
-from _shared import cards, context, testcheck  # noqa: E402
+from _shared import cards, context, testcheck, uicheck  # noqa: E402
 from _shared.discipline import cmdline, fail, missing_artifacts, read_document  # noqa: E402
 from _shared.rup import EXIT_OK, setup_console  # noqa: E402
 
@@ -87,8 +87,12 @@ def packet(context_dir, card_id, project_root) -> None:
     if not delivery.tests:
         print("- (none listed)")
     got = {i for _, _, ids in delivery.tests for i in ids}
-    print("Not covered by any delivery test: "
-          + (", ".join(c for c in wanted if c not in got) or "none"))
+    recheck = uicheck.ui_verified(context_dir, card)
+    if recheck:
+        print(f"Re-checked by cp-ui: {recheck['rule']} pass at {recheck['at']}")
+    else:
+        print("Not covered by any delivery test: "
+              + (", ".join(c for c in wanted if c not in got) or "none"))
 
     print("\n## 2. Files\n")
     changed = bullets(delivery.section("Files changed"))
@@ -108,7 +112,8 @@ def packet(context_dir, card_id, project_root) -> None:
         print("(none in the card: the brief is Description + Target files + Covers)")
 
     print("\n## 3. Test checks\n")
-    problems = testcheck.check_delivery(delivery, card, story, Path(project_root))
+    problems = testcheck.check_delivery(delivery, card, story, Path(project_root),
+                                        ui_verified=recheck is not None)
     if problems:
         print("Test checks: PROBLEMS")
         for problem in problems:

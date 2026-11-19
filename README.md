@@ -57,6 +57,8 @@ is made here and propagated to the agents with `scripts/install.sh`.
 | `cp-build` | Implement a task test-first, then deliver it with tests checked for value |
 | `cp-debug` | Open a bug card, pin it with a regression test, record the root cause before the fix |
 | `cp-review` | Review a card in `4-review` and record `approved` / `changes requested` |
+| `cp-operation-pentest` | White-box security audit of our own code (and a map-only `--infra` surface map); one BUG per confirmed finding (ADR-0020, ADR-0021) |
+| `cp-ui` | Design system before code (`--design-system`: three directions, the operator chooses) and UI audit after code (`--audit`: static checks, optional visual audit, evidence checklist; `--verify` closes UI BUGs) (ADR-0022) |
 
 Full details are in [`skills/README.md`](skills/README.md) and in each skill's
 `SKILL.md`. Architecture and operation are in [`.context/docs/`](.context/docs/).
@@ -247,7 +249,7 @@ core-poroduct-skills/
     │   └── auditclosure.py   # audit closure: which source modules owe a verdict
     ├── cp-orchestrator/      # front door (--route), governance, iteration protocol, UCP
     ├── cp-<discipline>/      # SKILL.md + scripts/run.py (roles as data) + references/
-    └── cp-{context,discover,backlog,build,debug,review}/   # execution skills
+    └── cp-{context,discover,backlog,build,debug,review,operation-pentest,ui}/   # execution skills
 ```
 
 Edit the skills here, in `skills/`, never in the installed copy. Each `run.py`

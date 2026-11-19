@@ -5,3 +5,4 @@
 ## Unplanned epics
 
 - EP-001 cp-operation — operation/sustainment family — 1/1 stories done (7-done)
+- EP-002 cp-ui — design system before code, UI audit after code — 1/1 stories done (7-done)

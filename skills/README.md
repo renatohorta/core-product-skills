@@ -40,6 +40,7 @@ state in `.context/`: cards, roadmap, generated board. 15 skills in total.
 | `cp-build` | Task/bug execution with TDD and test-value checks | `--start`, `--finish --delivery` |
 | `cp-debug` | Bug card, root cause before fix | `--open`, `--diagnose` |
 | `cp-review` | Review checklist and verdict | `<ID>`, `--record <ID> --doc` |
+| `cp-ui` | Design system (directions, record) and UI audit (static + optional visual + checklist; one BUG per finding group; re-check) | `--design-system [--record]`, `--audit [--visual]`, `--audit --verify`, `--audit --record` |
 
 Every writing command needs the marker `.context/.rup-standard` (exit 5 without
 it: ask the user, then `cp-context --init`). Cards: `EP/ST/TK/BUG-NNN`, one file

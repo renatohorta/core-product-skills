@@ -70,6 +70,7 @@ source of truth and the only place agents read/write project context.
 - Fix a bug: `cp-debug`
 - Do the tests catch bugs? (static audit, mutation): `cp-test --audit`
 - Review a delivered card: `cp-review`
+- Design system before UI work / UI audit (a11y, responsive, UI bugs): `cp-ui --design-system` · `cp-ui --audit`
 - RUP documents (governance, disciplines): `cp-orchestrator`
 - Project context lives in `.context/` (set up with `cp-context`).
 <!-- rup-skills:end -->

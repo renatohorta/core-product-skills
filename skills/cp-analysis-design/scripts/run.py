@@ -69,10 +69,14 @@ SPEC = {'key': 'analysis-design',
             {'slug': 'user-interface-designer',
              'role': 'User-Interface Designer',
              'goal': 'Produce Storyboards, the Navigation Map and the User-Interface '
-                     'Prototype.',
+                     'Prototype. If `.context/design-system/MASTER.md` exists, the '
+                     'storyboards and prototype use it; otherwise run '
+                     '`cp-ui --design-system` first.',
              'backstory': 'UI designer focused on ergonomics and navigation: you sketch '
                           'storyboards tied to use-case steps, map the navigation graph, '
-                          'and build exploratory prototypes to validate with real users.',
+                          'and build exploratory prototypes to validate with real users. If `.context/design-system/MASTER.md` '
+                          'exists, the storyboards and prototype use it; otherwise run '
+                          '`cp-ui --design-system` first.',
              'mission': 'Model the graphical interfaces with exclusive focus on '
                         'ergonomics, navigation flow and user goals.',
              'artifacts': ['Storyboards', 'Navigation Map', 'User-Interface Prototype']},

@@ -761,3 +761,77 @@ does not belong in a skill.
 **Consequences**: The team can point the skill at a scope file and get a scoped, safe map of
 which checks apply where, feeding the same pipeline. `_shared/scope.py` is now available to any
 cp-operation-* member. No crawler dependency; still pure stdlib, `python -S`.
+
+
+---
+
+## ADR-0022 — cp-ui: design system before code, UI audit after code
+
+**Date**: 2026-11-19 · **Status**: Accepted (second exception to "skills never run the project's commands"; the first is ADR-0016)
+
+**Context**: Products built through the cp-* pipeline come out **generic** (no visual identity
+is ever decided; the agent falls back to the same defaults per screen) and **full of UI bugs**
+(nothing in the pipeline looks at the interface: low contrast, no focus ring, horizontal
+scroll at 360 px, missing states reach `7-done`). UI exists only as a role inside
+`cp-analysis-design`. The sibling repo `ui-ux-pro-max-skill` (UUPM, MIT, NextLevelBuilder)
+has curated styles, palettes, font pairings, UX rules and a Playwright audit worth mining.
+Design: `inbox/processed/cp-ui-design.md`.
+
+**Decision**: Approach A — one new skill, `cp-ui`, with two moments, plus small hooks.
+
+- **Four operator decisions.** (1) Each product's identity is chosen by the skill operator,
+  never by the skill: `--design-system` proposes 2-3 distinct accessible directions with an
+  HTML preview each, a person picks/mixes/edits, and `--record` requires `--chosen-by` and a
+  filled `## Decision`; replacing needs `--force --reason`. (2) Playwright is optional: the
+  audit works without it and says so. (3) Findings do not block: each confirmed finding is a
+  `BUG-NNN` (grouped one per rule x file, deduped against open BUGs; a finding after the BUG
+  reached `7-done` opens a new one) and the delivering card moves on. (4) For BUGs opened by
+  cp-ui the fix evidence is a re-check, `cp-ui --audit --verify BUG-NNN`, accepted by
+  `cp-build --finish` instead of a regression test (cards carry `source: cp-ui`). Order: `cp-build --start` → `cp-debug --diagnose` (Root cause
+  with evidence) → fix → `cp-ui --audit --verify` → `cp-build --finish`.
+- **Audit in three layers with an honest header** (static / visual / checklist): static regex
+  candidates the agent must confirm or dismiss; the product's optional visual audit; an
+  evidence checklist where `not-verified` stays visible. `0 files` or an unanswered item is
+  never reported as "clean".
+- **UUPM v2.15.0 (2de1134) vendored verbatim** in `skills/cp-ui/vendor/uupm/` with its
+  `LICENSE` and a `NOTICE` entry, loaded in-process, offline, `python -S`; our direction
+  composer, `_shared/uikit.py` (MASTER.md parse/validate/tokens) and `_shared/uicheck.py`
+  (static checks, visual, verify) sit around it. `tokens.json` is derived from MASTER.md.
+  `templates/ui-audit.mjs` is adapted from UUPM's `design-audit.mjs`.
+- **Hooks**: `cp-build` packet gains a UI section (tokens, top rules, or a warning when no
+  design system exists); `cp-review` and `cp-analysis-design` point to the audit / the design
+  system; `cp-orchestrator` has `ui-design` and `ui-audit` routes.
+
+Rulings made while implementing (they changed the design):
+
+- **The visual audit runs only with explicit `--visual`.** A cloned repo's
+  `.context/ui/profile.json` must never execute on a plain `--audit` (security). Without the
+  flag the status is `skipped (--visual not given)`. The report path is confined to the
+  project root; the run is persisted to `.context/ui/visual-last.json` and `--record` never
+  re-runs it; `ran` is only claimed from that file for a matching scope.
+- **Verify cannot pass vacuously.** A deleted, renamed, excluded, ignored or non-UI file, a
+  missing design system for `raw-color`, a viewport the report never exercised, or checklist
+  evidence that is not an existing file inside the project is a `fail`, not a pass.
+- **UTC-strict timestamps.** Times are UTC with offset; a verify record counts only if
+  strictly later than `cp-build --start` (`ui_verify_after`), for the same BUG and rule.
+- **Dismissals made after `--start` are ignored by verify**, so a BUG cannot be "fixed" by
+  dismissing its candidate; `--finish` says why a verify was rejected.
+- **A confirmed static finding must match a scanner candidate** at `--record` (by line or by
+  snippet in the evidence); what the scanner cannot see is filed as `checklist:<id>`.
+- Candidates the agent leaves unaddressed are listed as not verified and counted in the header.
+
+**Second command-running exception.** `cp-ui --audit --visual` (and `--verify --visual`) runs
+the single command declared as `visual_audit.command` in `.context/ui/profile.json`, opt-in per
+call, with a timeout (default 120 s), in the live project tree; the packet prints the exact
+command and cwd first. The command only opens the URL of an app the operator already started
+and writes a report; the skill never starts or stops servers. CLAUDE.md rule 6 lists it next
+to `cp-test --mutate` (ADR-0016).
+
+**Consequences**: UI identity becomes an explicit, attributed, recorded decision, and UI
+quality becomes a routed, non-blocking step that feeds the existing pipeline. Playwright and
+Node are optional (the visual layer reports `not configured` without them). Trust model:
+verify records and dismissals are plain files, **not tamper-proof**; they stop honest mistakes
+and vacuous passes, not a determined forger, so `cp-review` shows `Re-checked by cp-ui` and
+reviewers read them. Static checks are heuristics; false positives are dismissed with a reason
+and remembered. Deferred: a screen x rule coverage ledger, refreshing the vendored data from
+upstream, native-app visual audit, measuring the effect in `eval/`.

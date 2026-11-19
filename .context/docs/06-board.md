@@ -29,13 +29,25 @@ _Empty._
 ## 7-done
 
 - EP-001 [epic] cp-operation — operation/sustainment family
+- EP-002 [epic] cp-ui — design system before code, UI audit after code
 - ST-001 [story] cp-operation-pentest v1 — code security audit
+- ST-002 [story] cp-ui v1 — design system, UI audit, verify
 - TK-001 [task] _shared/pentest.py — finding parsing, surface, coverage ledger
 - TK-002 [task] run.py — security-audit work packet
 - TK-003 [task] run.py --record — assessment to BUG cards
 - TK-004 [task] run.py --waive and the closure gate
 - TK-005 [task] SKILL.md, references, profile.json, attribution
 - TK-006 [task] orchestrator routing and end-to-end test
+- TK-007 [task] Vendor UUPM v2.15.0 and prove it runs offline under python -S
+- TK-008 [task] _shared/uikit.py — MASTER.md parse, validate, tokens
+- TK-009 [task] Direction composer and previews
+- TK-010 [task] cp-ui --design-system packet and record
+- TK-011 [task] _shared/uicheck.py — static UI checks
+- TK-012 [task] cp-ui --audit packet and record (grouped BUGs, dismissals, report)
+- TK-013 [task] Optional visual audit layer and ui-audit.mjs template
+- TK-014 [task] --verify BUG-NNN and cp-build accepting it for cp-ui BUGs
+- TK-015 [task] Hooks — cp-build packet, cp-review, cp-analysis-design, router
+- TK-016 [task] Docs, ADR-0022, e2e, traceability
 
 ## blocked
 

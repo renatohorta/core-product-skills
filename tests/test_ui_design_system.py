@@ -171,3 +171,16 @@ def test_packet_flags_fallback_query_for_no_match(ctx_env, python_cmd):
             "fallback query ('saas dashboard'); ask the operator for product-type/industry "
             "keywords and re-run.") in r.stdout
     assert r.stdout.index("No match") < r.stdout.index("### Direction A")
+
+
+def test_thin_match_is_topped_up_with_loud_note(ctx_env, python_cmd, tmp_path):
+    # one-row briefing: never present a single direction silently
+    for q in ("portfolio", "crypto exchange"):
+        r = ui(["--design-system", q, "--out", str(tmp_path / q.split()[0])], ctx_env, python_cmd)
+        assert r.returncode == EXIT_OK, r.stderr
+        assert r.stdout.count("### Direction ") >= 2
+        assert "only 1 direction(s) matched the briefing" in r.stdout
+        assert "generic fallback" in r.stdout
+        assert "ask the operator for more product-type/industry keywords" in r.stdout
+        assert "(generic fallback)" in r.stdout.split("### Direction B")[1].split("\n")[0]
+        assert "(generic fallback)" not in r.stdout.split("### Direction A")[1].split("\n")[0]

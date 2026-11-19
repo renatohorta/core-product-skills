@@ -83,29 +83,40 @@ def _rows(m, query, domain):
     return m.core.search(query, domain, max_results=_MAX_ROWS).get("results", [])
 
 
-def compose(query, project, n=3):
-    """Up to n (max 3) directions; fewer when the data yields fewer usable rows."""
-    m = uupm.load()
-    palettes, seen = [], set()
+def _collect(m, query, palettes, pal_seen, fonts, font_seen):
     for row in _rows(m, query, "color"):
         colors = _colors_from_row(row)
         key = (colors["primary"].upper(), colors["background"].upper())
-        if _accessible(colors) and key not in seen:
-            seen.add(key)
+        if _accessible(colors) and key not in pal_seen:
+            pal_seen.add(key)
             palettes.append(colors)
-    fonts, seen = [], set()
     for row in _rows(m, query, "typography"):
         typo = _typography_from_row(row)
         key = (typo["heading"], typo["body"])
-        if key not in seen:
-            seen.add(key)
+        if key not in font_seen:
+            font_seen.add(key)
             fonts.append(typo)
+
+
+def compose(query, project, n=3, fallback=None):
+    """Up to n (max 3) directions; fewer when the data yields fewer usable rows.
+
+    With `fallback` (a broader query), a thin match (< 2 usable palettes or fonts) is
+    topped up from it; those directions carry `fallback: True` so the packet can say so.
+    """
+    m = uupm.load()
+    palettes, pal_seen, fonts, font_seen = [], set(), [], set()
+    _collect(m, query, palettes, pal_seen, fonts, font_seen)
+    matched = min(len(palettes), len(fonts))
+    if fallback and matched < min(2, n):
+        _collect(m, fallback, palettes, pal_seen, fonts, font_seen)
     count = min(max(1, n), len(IDS), len(palettes), len(fonts))
     gen = m.design_system.DesignSystemGenerator()
     out = []
     for k in range(count):
         d = gen.generate(query, project_name=project, variance=VARIANCES[k])
         d["colors"], d["typography"], d["id"] = palettes[k], fonts[k], IDS[k]
+        d["fallback"] = k >= matched
         out.append(d)
     return out
 

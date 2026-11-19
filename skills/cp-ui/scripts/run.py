@@ -108,13 +108,17 @@ def print_packet(context_dir, briefing, product, out):
              "(or run cp-discover first)")
     product = (product or "").strip() or " ".join(_words(query, 4))
     stack = detect_stack(project_root(context_dir))
-    ds = compose(query, product)
+    ds = compose(query, product, fallback=FALLBACK_QUERY)
+    matched = sum(1 for d in ds if not d.get("fallback"))
     note = ""
-    if not ds:  # the vendored search is keyword-based: unknown words match nothing
-        ds = compose(FALLBACK_QUERY, product)
+    if ds and matched == 0:
         note = (f"No match for the briefing's words — these directions come from a generic "
                 f"fallback query ('{FALLBACK_QUERY}'); ask the operator for "
                 f"product-type/industry keywords and re-run.\n")
+    elif ds and matched < len(ds):  # keyword search: thin matches get topped up
+        note = (f"**Note: only {matched} direction(s) matched the briefing — the others come "
+                f"from a generic fallback ('{FALLBACK_QUERY}'); ask the operator for more "
+                f"product-type/industry keywords and re-run.**\n")
     if not ds:
         fail("no usable design direction for this briefing — try other words")
     out_dir = Path(out) if out else Path(tempfile.mkdtemp(prefix="cp-ui-"))
@@ -143,7 +147,8 @@ def print_packet(context_dir, briefing, product, out):
         style = (d.get("style") or {}).get("name", "")
         typo = d.get("typography") or {}
         colors = d.get("colors") or {}
-        print(f"### Direction {d['id']} — {style}\n")
+        tag = " (generic fallback)" if d.get("fallback") else ""
+        print(f"### Direction {d['id']} — {style}{tag}\n")
         print(f"- Primary: {colors.get('primary', '')} on {colors.get('background', '')}")
         print(f"- Typography: {typo.get('heading', '')} / {typo.get('body', '')}")
         print(f"- Preview: {preview}\n")

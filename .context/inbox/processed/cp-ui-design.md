@@ -1,4 +1,4 @@
-# Design — cp-ui (design system before code, UI audit after code)
+# [Done] Design — cp-ui (design system before code, UI audit after code) — shipped ADR-0022
 
 Status: draft for approval · Date: 2026-11-19 · Prospective ADR-0022
 

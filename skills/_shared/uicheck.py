@@ -389,9 +389,23 @@ def _finding_selector(f: Finding) -> str:
     return parts[1].strip() if len(parts) > 1 else ""
 
 
-def visual_dismissal_key(check: str, selector: str) -> str:
-    """Viewport-independent: rule + check + fingerprint of the selector."""
-    return f"visual:{check}::{VISUAL_PAGE}::{fingerprint(selector)}"
+_VIEWPORT_TOKEN = re.compile(r"\b[a-z]+-\d{3,4}\b")
+_SCREENSHOT_SUFFIX = re.compile(r"\s*\(screenshot: [^)]*\)\s*$")
+
+
+def _visual_detail(detail: str) -> str:
+    """The finding's detail without the viewport name or screenshot path, so the same
+    evidence at another viewport keys the same — but a different (e.g. worse) one doesn't."""
+    text = _SCREENSHOT_SUFFIX.sub("", detail or "")
+    return " ".join(_VIEWPORT_TOKEN.sub("", text).split())
+
+
+def visual_dismissal_key(check: str, selector: str, detail: str = "") -> str:
+    """Viewport-independent: check + fingerprint of the selector AND the detail. The
+    template's selector is mostly `html`, so the selector alone would turn one dismissal
+    into a permanent, page-wide one that also hides later, different findings."""
+    fp = fingerprint(f"{selector}\n{_visual_detail(detail)}")
+    return f"visual:{check}::{VISUAL_PAGE}::{fp}"
 
 
 def group_key(f: Finding) -> str:
@@ -554,7 +568,7 @@ def check_dismissals(findings, candidates) -> list:
             for _, err in [match_candidate(f, candidates)] if err]
 
 
-def record_dismissals(context_dir, findings, actor, candidates=()) -> list:
+def record_dismissals(context_dir, findings, actor, candidates=(), visual=()) -> list:
     """Persist `dismissed` findings (validate first with check_dismissals). The fingerprint
     is the matching candidate's snippet, so the next packet hides exactly that candidate;
     non-static rules (checklist/visual) have no candidate and use their evidence."""
@@ -567,7 +581,13 @@ def record_dismissals(context_dir, findings, actor, candidates=()) -> list:
         file = finding_file(f)
         pick = match_candidate(f, candidates)[0] if f.rule.strip() in CHECKS else None
         if f.rule.strip().startswith("visual:"):
-            fp = fingerprint(_finding_selector(f))
+            check = f.rule.strip()[len("visual:"):]
+            sel, vp = _finding_selector(f), finding_viewport(f)
+            stored = next((v for v in visual if v.get("check") == check
+                           and v.get("viewport") == vp and v.get("selector") == sel), None)
+            # prefer the run's own detail; the agent's Evidence may paraphrase it
+            key = visual_dismissal_key(check, sel, stored["detail"] if stored else f.evidence)
+            fp = key.rsplit("::", 1)[1]
         else:
             fp = fingerprint(pick.snippet if pick else f.evidence)
         key = f"{f.rule.strip()}::{file}::{fp}"
@@ -810,7 +830,8 @@ def visual_status_for_record(context_dir, profile, scope):
 
 def visual_not_dismissed(visual_findings, dismissed_keys) -> list:
     return [v for v in visual_findings
-            if visual_dismissal_key(v["check"], v["selector"]) not in dismissed_keys]
+            if visual_dismissal_key(v["check"], v["selector"], v.get("detail", ""))
+            not in dismissed_keys]
 
 
 def unaddressed_visual(findings, visual_findings) -> list:

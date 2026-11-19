@@ -453,7 +453,11 @@ def record_audit(context_dir, source, by, subpath=""):
         print("Fix the Location (path:line), or file what the scanner cannot see as "
               "`Rule: checklist:<id>`.")
         sys.exit(1)
-    uicheck.record_dismissals(context_dir, findings, (by or "").strip() or "agent", cands)
+    # never re-run the command: `ran` only comes from the last packet run for this scope
+    visual_status, visual = uicheck.visual_status_for_record(
+        context_dir, load_profile(context_dir), subpath)
+    uicheck.record_dismissals(context_dir, findings, (by or "").strip() or "agent", cands,
+                              visual)
     open_bugs = uicheck.open_bugs_by_key(context_dir)
     results = []  # (key, group, card id, created?)
     for key, group in groups.items():
@@ -475,9 +479,6 @@ def record_audit(context_dir, source, by, subpath=""):
             cards.set_meta(card, "ui_viewports", ",".join(vps))
         results.append((key, group, card.id, True))
 
-    # never re-run the command: `ran` only comes from the last packet run for this scope
-    visual_status, visual = uicheck.visual_status_for_record(
-        context_dir, load_profile(context_dir), subpath)
     visual_left = uicheck.unaddressed_visual(
         findings, uicheck.visual_not_dismissed(visual, already))
     header = uicheck.header_line(scanned, visual_status, answers, len(left) + len(visual_left))

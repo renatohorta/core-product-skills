@@ -66,5 +66,8 @@ under an `exclude`) — dismiss and name it.
 ## Visual rules (`visual:<check>`)
 
 Come from the optional visual audit (see SKILL.md). Location is `<viewport> <selector>`;
-a confirmed visual finding is grouped into one BUG per `visual:<check>` and viewport
-(key `visual:<check>::<viewport>`, the viewport playing the role of the file).
+confirmed visual findings are grouped into one BUG per check (key
+`visual:<check>::(page)`), with every viewport listed as an occurrence. A dismissal is
+keyed on the check, the selector **and the finding's detail** (viewport name removed): the
+same evidence at other viewports stays hidden, but a different or worse finding of the same
+check (e.g. "12 <img> missing alt" after dismissing "1 <img> missing alt") shows up again.

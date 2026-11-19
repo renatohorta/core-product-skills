@@ -15,9 +15,9 @@ It never calls a model (ADR-0012): the agent running it is the LLM.
         print the audit packet (--visual runs the profile's visual command): static candidates, checklist, document format
   run.py --audit --verify BUG-NNN [--visual] [--evidence PATH]
         re-check one cp-ui BUG; writes .context/ui/verify/BUG-NNN.json (exit 1 on fail)
-  run.py --audit --record FILE|- [--by NAME]
+  run.py --audit --record FILE|- [--path SUB] [--by NAME]
         validate the audit document, open one BUG per (rule, file) group of confirmed
-        findings, store dismissals, write .context/ui/audits/<date>.md
+        findings (visual: one per check, viewports as occurrences), store dismissals, write .context/ui/audits/<date>.md
 
 Usage:
   python run.py --design-system "legal saas dashboard" [--context-dir D]

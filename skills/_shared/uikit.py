@@ -145,13 +145,19 @@ UI_RULES = (
 
 
 def touches_ui(card) -> bool:
-    """True for a card that changes the UI: cp-ui source, a UI file in Target files, or a UI word."""
+    """True for a card that changes the UI: cp-ui source, a UI file in Target files, or a UI word
+    in its title or description."""
     if card.meta.get("source") == "cp-ui":
         return True
     for line in cards.section_text(card, "Target files").splitlines():
         if line.strip().lstrip("-* ").strip("`").lower().endswith(uicheck.UI_EXTENSIONS):
             return True
-    return bool(_UI_WORDS.search(f"{card.title}\n{card.body}"))
+    # words only in the title and the description (the text before the first `## ` heading
+    # when there is no `## Description`): not in Target files or acceptance criteria
+    desc = cards.section_text(card, "Description")
+    if not desc:
+        desc = re.split(r"(?m)^##\s", card.body or "", maxsplit=1)[0]
+    return bool(_UI_WORDS.search(f"{card.title}\n{desc}"))
 
 
 def ui_section_lines(context_dir) -> list:

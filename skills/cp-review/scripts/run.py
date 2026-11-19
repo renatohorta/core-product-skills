@@ -99,8 +99,10 @@ def packet(context_dir, card_id, project_root) -> None:
               + (", ".join(c for c in wanted if c not in got) or "none"))
 
     if uikit.touches_ui(card):
-        audits = sorted((Path(context_dir) / "ui" / "audits").glob("*.md"),
-                        key=lambda p: p.name)
+        def _audit_order(p):  # YYYY-MM-DD[-N].md: by date, then the numeric suffix
+            m = re.match(r"^(.*?)(?:-(\d+))?$", p.stem)
+            return (m.group(1), int(m.group(2) or 1))
+        audits = sorted((Path(context_dir) / "ui" / "audits").glob("*.md"), key=_audit_order)
         head = "none yet"
         if audits:
             try:

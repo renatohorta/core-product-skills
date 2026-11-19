@@ -116,3 +116,24 @@ def test_touches_ui_rules():
     assert not t(_card(body="## Target files\n\n- app/booking.py\n"))
     assert t(_card(title="x", source="cp-ui"))
     assert t(_card(title="x", body="", **{"source": "cp-ui"}))
+
+
+def test_touches_ui_ignores_target_file_names_and_acceptance_criteria():
+    t = uikit.touches_ui
+    assert not t(_card(title="Cache the report", body="## Target files\n\n- app/Page.py\n"))
+    assert not t(_card(title="Paginate", body="## Description\n\nPaginate the export.\n\n"
+                       "## Acceptance criteria\n\n- the page size is 50\n"))
+    assert t(_card(title="Paginate", body="## Description\n\nFix the layout of the export.\n\n"
+                   "## Acceptance criteria\n\n- ok\n"))
+
+
+def test_review_latest_audit_orders_by_date_then_numeric_suffix(ctx_env, python_cmd):
+    ctx = _proj(ctx_env, "- src/Home.tsx")
+    cards.move(ctx, "TK-001", "4-review", "delivered")
+    aud = ctx / "ui" / "audits"
+    aud.mkdir(parents=True)
+    for name, head in (("2026-11-19.md", "first"), ("2026-11-19-2.md", "second"),
+                       ("2026-11-19-10.md", "tenth")):
+        (aud / name).write_text(f"{head} header\nx\n", encoding="utf-8")
+    r = run_skill("cp-review", ["TK-001"], ctx_env, python_cmd)
+    assert "tenth header" in r.stdout and "second header" not in r.stdout

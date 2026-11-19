@@ -369,3 +369,12 @@ def test_finish_explains_why_a_verify_record_is_rejected(ctx_env, python_cmd):
         r = build(["--finish", bug, "--delivery", "-"], ctx_env, python_cmd, stdin=DELIVERY)
         assert r.returncode == 1 and needle in r.stdout, (needle, r.stdout)
         assert r.stdout.index(needle) < r.stdout.index("Delivery rejected")
+
+
+def test_finish_says_when_there_is_no_verify_record(ctx_env, python_cmd):
+    ctx, _, bug, _ = _doing(ctx_env, python_cmd)
+    r = build(["--finish", bug, "--delivery", "-"], ctx_env, python_cmd, stdin=DELIVERY)
+    out = r.stdout
+    assert r.returncode == 1
+    assert f"no cp-ui verify record — run `cp-ui --audit --verify {bug}`" in out
+    assert out.index("no cp-ui verify record") < out.index("Delivery rejected")

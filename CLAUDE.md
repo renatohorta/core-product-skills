@@ -24,7 +24,8 @@ source of truth and the only place agents read/write project context.
    discarded and rewritten on every `./scripts/install.sh`.
 2. **`_shared` is not a skill** — helpers (`rup.py`, `discipline.py`,
    `context.py`, `consent.py`, `frontmatter.py`, `cards.py`, `roadmap.py`,
-   `testcheck*.py`, `testaudit.py`, `mutation.py`, `auditclosure.py`, `router.py`); it goes to the agent's skills root, not to the category.
+   `testcheck*.py`, `testaudit.py`, `mutation.py`, `auditclosure.py`, `router.py`,
+   `pentest.py`, `uikit.py`, `uicheck.py`); it goes to the agent's skills root, not to the category.
    Every `run.py` looks for it next to the skill and one level up (Hermes).
 3. **Skill protocol** — `run.py "<briefing>" [--input F] [--phase P]
    [--context-dir D]` prints the work packet; the agent writes one document with
@@ -35,7 +36,7 @@ source of truth and the only place agents read/write project context.
    4 `.context/` not writable · 5 needs authorization (no `.context/.rup-standard`
    marker; the agent asks the user, then runs `cp-context --init`).
    The execution skills (`cp-context`, `cp-discover`, `cp-backlog`,
-   `cp-build`, `cp-debug`, `cp-review`) add their own commands; see each
+   `cp-build`, `cp-debug`, `cp-review`, `cp-ui`, `cp-operation-pentest`) add their own commands; see each
    `SKILL.md`.
 4. **A discipline's roles/artifacts are data** — the `SPEC` dict in its
    `run.py`; the behavior is in `_shared/discipline.py`. Never reintroduce an

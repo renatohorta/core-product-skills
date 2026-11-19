@@ -164,6 +164,8 @@ def finish(context_dir, card_id, source, project_root) -> None:
     if verify is not None and why:
         print(f"cp-ui verify record not accepted: {why}")
         verify = None
+    if card.type == "bug" and card.meta.get("source") == uicheck.SOURCE and why == "no verify record":
+        print(f"no cp-ui verify record — run `cp-ui --audit --verify {card.id}`")
     problems = testcheck.check_delivery(delivery, card, story, Path(project_root),
                                         ui_verified=verify is not None)
     if problems:

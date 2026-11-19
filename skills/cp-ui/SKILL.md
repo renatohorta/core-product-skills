@@ -1,6 +1,6 @@
 ---
 name: cp-ui
-description: "Use when the project needs a front-end design system chosen and recorded (colors, typography, style), or when its UI must be checked against that design system."
+description: "Use when the project needs a front-end design system chosen and recorded (colors, typography, style), or when its UI must be checked: accessibility, responsive or UI-bug audit against that design system."
 ---
 
 # cp-ui — design system for the front end

@@ -141,6 +141,10 @@ def routes(cmd):
         ("test-audit", "asks whether the tests are any good, coverage vs real value, mutation",
          "Test-value audit protocol A0–A8 (static audit, mutation, triage)",
          cmd("cp-test", "<request>", "--audit")),
+        ("pentest", "wants our own code audited for security holes / vulnerabilities / leaks",
+         "White-box security audit: find vuln classes, open a BUG per confirmed finding "
+         "(cp-operation-* family)",
+         cmd("cp-operation-pentest", "<request>")),
         ("status", "asks where the project is, what is pending, what to do next",
          "Recorded artifacts + board",
          cmd(ORCHESTRATOR_SKILL, "--status", "--phase", "<phase>") + "` · `"
@@ -161,6 +165,9 @@ CHAINS = [
      "test-audit (profile → baseline → static audit → mutation → triage) → backlog cards "
      "for the real gaps → build them"),
     ("Formal RUP documentation of a phase", "iteration (--auto) → each step in order"),
+    ("Security audit of our own code",
+     "pentest → [agent audits the source, confirms via the 7-Question Gate] → "
+     "pentest --record → one BUG per confirmed finding → debug/build each → review"),
 ]
 
 GATES = [

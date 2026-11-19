@@ -9,7 +9,7 @@ from test_context_persistence import record, run_skill
 from _shared import consent, router
 
 ROUTE_KEYS = ["context", "discover", "requirements", "discipline", "governance", "iteration",
-              "estimate", "backlog", "build", "debug", "review", "test-audit", "pentest",
+              "estimate", "backlog", "build", "debug", "review", "test-audit", "pentest", "ui-design", "ui-audit",
               "status"]
 
 

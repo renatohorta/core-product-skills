@@ -1,6 +1,25 @@
 ---
 name: cp-orchestrator
 description: "Use when the user asks for any software-project work without naming a cp-* skill — a new idea or feature, requirements, backlog, a task, a bug, a review, test quality, status, \"what now\" — or says \"run RUP\", \"plan the iteration\", \"work orders\". Front door of the cp-* family: routes the request and runs the right skill itself."
+---
+
+# cp-orchestrator — RUP Lifecycle Governance
+
+Central orchestrator of the **RUP (Rational Unified Process)** family. The user
+dialogues exclusively with this skill; it plans phases and iterations, manages
+risks, formulates formal **Work Orders** and drives the discipline skills.
+
+Grounded in *The Rational Unified Process: An Introduction* (3rd ed.), Philippe
+Kruchten. Base role: **Project Manager** (supported by the Project Reviewer).
+
+## Front door — start every request here
+
+The user talks in plain words ("quero login com Google", "o checkout quebrou",
+"revisa o TK-012", "e agora?"). They **never** have to know or call a cp-*
+skill: you route the request and run the skills yourself.
+
+```bash
+python scripts/run.py --route "<what the user asked>"
 ```
 
 The routing packet (read-only) shows the project state from `.context/`

@@ -26,6 +26,25 @@ def _description(path):
 
 
 @pytest.mark.parametrize("path", SKILL_FILES, ids=lambda p: p.parent.name)
+def test_frontmatter_is_closed_and_body_follows(path):
+    """The frontmatter is delimited by `---` lines of their own, and the body follows.
+
+    A `---` inside a markdown table row (`|-------|`) is not a delimiter: a
+    SKILL.md that lost its closing line still split on it and passed the
+    description tests while harnesses showed `-------|---------|` as the
+    description (regression of 3776a88).
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines and lines[0] == "---", f"{path.parent.name}: must open with ---"
+    assert "---" in lines[1:], f"{path.parent.name}: frontmatter has no closing ---"
+    end = lines.index("---", 1)
+    keys = {l.split(":", 1)[0] for l in lines[1:end] if ":" in l}
+    assert {"name", "description"} <= keys, f"{path.parent.name}: frontmatter keys {keys}"
+    assert any(l.startswith("# ") for l in lines[end + 1:]), (
+        f"{path.parent.name}: no '# ' title after the frontmatter (body cut?)")
+
+
+@pytest.mark.parametrize("path", SKILL_FILES, ids=lambda p: p.parent.name)
 def test_description_states_when_to_use_it_first(path):
     description, _ = _description(path)
     assert description.lower().startswith("use when"), (

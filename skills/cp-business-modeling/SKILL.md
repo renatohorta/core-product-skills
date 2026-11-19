@@ -1,6 +1,52 @@
 ---
 name: cp-business-modeling
 description: "Use when the user needs the business understood before the system: business vision, business use cases, domain model or business object model (RUP Business Modeling, 2/9)."
+---
+
+# cp-business-modeling — RUP Business Modeling Discipline
+
+This skill covers the RUP **Business Modeling Discipline**: understanding the target organization and designing the business processes the software supports.
+
+Grounded in *The Rational Unified Process: An Introduction* (3rd ed.), Philippe
+Kruchten. Part of the `rup` family — drive the whole lifecycle through
+`cp-orchestrator`, or run this discipline directly.
+
+## Agents (2)
+
+| Agent (slug) | Role | Artifacts |
+|--------------|------|-----------|
+| `business-process-analyst` | Business Process Analyst | Business Vision Document, Business Goals, Target-Organization Assessment, Business Use-Case Model, Business Actors, Business Glossary |
+| `business-designer` | Business Designer | Business Analysis Model, Business Use-Case Realizations, Business Workers, Business Entities, Business Systems, Business Events, Business Rules, Supplementary Business Specifications, Business Architecture Document |
+
+## Phase focus
+
+Inception (initial), Elaboration
+
+## How to run this skill — you are the LLM
+
+This skill does not call any model: **you, the agent running it, produce the
+artifacts**. The script gives you the work packet and records your result.
+
+1. **Get the work packet** (read-only):
+
+   ```bash
+   python scripts/run.py "<briefing>" --phase <Inception|Elaboration|Construction|Transition>
+   python scripts/run.py --input briefing.md --phase Elaboration     # long briefings
+   ```
+
+   It prints the RUP roles of this discipline (goal, perspective, mission), the
+   **exact list of artifacts** you must write, the briefing, and the artifacts
+   already recorded in `.context/` that this discipline builds on (governance +
+   the earlier disciplines of the same phase).
+
+2. **Write ONE markdown document**: a `# <Role>` per role, and a level-2
+   heading `## <Artifact>` for every artifact listed. Follow the RUP conventions,
+   reuse names/IDs from the earlier artifacts, state assumptions explicitly.
+
+3. **Record it — mandatory** (the packet prints the exact command):
+
+   ```bash
+   python scripts/run.py --record doc.md --phase Elaboration "<briefing>"
    cat doc.md | python scripts/run.py --record - --phase Elaboration --input briefing.md
    ```
 

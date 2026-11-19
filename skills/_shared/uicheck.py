@@ -327,7 +327,10 @@ def severity_rank(severity: str) -> int:
 
 
 def file_of(location: str) -> str:
-    return (location or "").split(":", 1)[0].strip().replace("\\", "/")
+    path = (location or "").split(":", 1)[0].strip().replace("\\", "/")
+    while path.startswith("./"):
+        path = path[2:]
+    return path
 
 
 def group_key(f: Finding) -> str:
@@ -376,7 +379,10 @@ def _parse_checklist(text: str, errors: list) -> dict:
         if not sm:
             errors.append(f"Checklist: '{item}' needs one of {', '.join(CHECKLIST_STATUSES)}")
             continue
-        answers[item] = (sm.group(1).lower(), sm.group(2).strip())
+        status, evidence = sm.group(1).lower(), sm.group(2).strip()
+        if status == "ok" and not evidence:  # no evidence, no `ok`
+            status, evidence = "not-verified", "ok without evidence"
+        answers[item] = (status, evidence)
     return answers
 
 
@@ -410,11 +416,13 @@ def parse_audit(text: str):
     return findings, answers, errors
 
 
-def header_line(files_scanned: int, visual_status: str, answers: dict) -> str:
+def header_line(files_scanned: int, visual_status: str, answers: dict,
+                unaddressed: int = 0) -> str:
     """The honest first line of the report: what was and was not verified."""
     total = len(CHECKLIST_IDS)
     answered = sum(1 for k in CHECKLIST_IDS if answers.get(k, ("", ""))[0] in ANSWERED)
-    return (f"Verified — static: {files_scanned} files · visual: {visual_status} · "
+    extra = f", {unaddressed} candidates not addressed" if unaddressed else ""
+    return (f"Verified — static: {files_scanned} files{extra} · visual: {visual_status} · "
             f"checklist: {answered}/{total} answered, {total - answered} not-verified")
 
 
@@ -451,10 +459,42 @@ def load_dismissals(context_dir) -> set:
     return {str(r.get("key", "")) for r in _load_dismissal_rows(context_dir)}
 
 
+def match_candidate(f: Finding, candidates):
+    """-> (candidate | None, error | None) for a finding about a static rule.
+
+    Exact (rule, file, line) wins; else the (rule, file) candidates whose snippet is
+    contained in the evidence (or vice versa); else, with no line in the Location, the
+    only candidate of that (rule, file). Ambiguous or no match -> an error listing the
+    current candidate lines so the agent can fix its Location."""
+    rule, file = f.rule.strip(), file_of(f.location)
+    pool = [c for c in candidates if c.rule == rule and c.file == file]
+    line = f.location.split(":", 1)[1].split(":")[0].strip() if ":" in f.location else ""
+    exact = [c for c in pool if line and str(c.line) == line]
+    if exact:
+        return exact[0], None
+    ev = (f.evidence or "").strip()
+    by_text = [c for c in pool if c.snippet.strip() and (c.snippet.strip() in ev
+                                                          or (ev and ev in c.snippet))]
+    if len(by_text) == 1:
+        return by_text[0], None
+    if not line and len(pool) == 1:
+        return pool[0], None
+    where = ", ".join(f"{c.file}:{c.line}" for c in pool) or "none"
+    why = "ambiguous" if len(by_text) > 1 else "matches no current candidate"
+    return None, (f"'{f.rule.strip()}' at {f.location} {why}; "
+                  f"current candidates for {rule} in {file or '(no file)'}: {where}")
+
+
+def check_dismissals(findings, candidates) -> list:
+    """Errors for dismissed static-rule findings that would not hide any candidate."""
+    return [err for f in findings if f.dismissed and f.rule.strip() in CHECKS
+            for _, err in [match_candidate(f, candidates)] if err]
+
+
 def record_dismissals(context_dir, findings, actor, candidates=()) -> list:
-    """Persist `dismissed` findings. The fingerprint is taken from the matching scan
-    candidate's snippet (so the next packet hides exactly that candidate); the finding's
-    evidence is the fallback. Returns the rows added."""
+    """Persist `dismissed` findings (validate first with check_dismissals). The fingerprint
+    is the matching candidate's snippet, so the next packet hides exactly that candidate;
+    non-static rules (checklist/visual) have no candidate and use their evidence."""
     from datetime import datetime
     rows = _load_dismissal_rows(context_dir)
     seen = {r.get("key") for r in rows}
@@ -463,10 +503,7 @@ def record_dismissals(context_dir, findings, actor, candidates=()) -> list:
         if not f.dismissed:
             continue
         file = file_of(f.location)
-        line = f.location.split(":", 1)[1].strip() if ":" in f.location else ""
-        match = [c for c in candidates if c.rule == f.rule.strip() and c.file == file]
-        exact = [c for c in match if str(c.line) == line.split(":")[0]]
-        pick = exact[0] if exact else (match[0] if len(match) == 1 else None)
+        pick = match_candidate(f, candidates)[0] if f.rule.strip() in CHECKS else None
         fp = fingerprint(pick.snippet if pick else f.evidence)
         key = f"{f.rule.strip()}::{file}::{fp}"
         if key in seen:
@@ -483,6 +520,18 @@ def record_dismissals(context_dir, findings, actor, candidates=()) -> list:
         path.write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n",
                         encoding="utf-8")
     return added
+
+
+def unaddressed(findings, candidates, dismissed_keys) -> list:
+    """In-scope candidates not dismissed earlier that no finding of this record covers."""
+    covered = set()
+    for f in findings:
+        if f.rule.strip() in CHECKS:
+            c, _ = match_candidate(f, candidates)
+            if c is not None:
+                covered.add(candidate_key(c))
+    return [c for c in candidates
+            if candidate_key(c) not in dismissed_keys and candidate_key(c) not in covered]
 
 
 # ─── BUG cards ───────────────────────────────────────────────────────────

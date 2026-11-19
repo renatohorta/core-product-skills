@@ -266,7 +266,10 @@ def print_audit_packet(context_dir, scope, subpath):
     except OSError:
         items = {}
     me = Path(__file__).resolve()
-    record_cmd = cmdline([sys.executable, me, "--audit", "--record", "FILE|-", "--by", "<NAME>"])
+    record_args = [sys.executable, me, "--audit", "--record", "FILE|-", "--by", "<NAME>"]
+    if subpath:
+        record_args += ["--path", subpath]
+    record_cmd = cmdline(record_args)
 
     print(f"# UI audit — {scope or 'the whole front end'}\n")
     print("You are the auditor. Verify every candidate in the source (a regex hit is a "
@@ -325,7 +328,7 @@ def _report_path(context_dir) -> Path:
     return path
 
 
-def record_audit(context_dir, source, by):
+def record_audit(context_dir, source, by, subpath=""):
     context.ensure_writable(context_dir)
     text = read_document(source).strip()
     findings, answers, errors = uicheck.parse_audit(text)
@@ -335,7 +338,15 @@ def record_audit(context_dir, source, by):
             print(f"- {e}")
         sys.exit(1)
 
-    cands, scanned = _scan(context_dir)
+    cands, scanned = _scan(context_dir, subpath)
+    errors = uicheck.check_dismissals(findings, cands)
+    if errors:
+        print("Audit document rejected (a dismissal must hide a real candidate):")
+        for e in errors:
+            print(f"- {e}")
+        sys.exit(1)
+    already = uicheck.load_dismissals(context_dir)
+    left = uicheck.unaddressed(findings, cands, already)
     uicheck.record_dismissals(context_dir, findings, (by or "").strip() or "agent", cands)
 
     groups = {}
@@ -355,9 +366,8 @@ def record_audit(context_dir, source, by):
         cards.set_meta(card, "ui_key", key)
         results.append((key, group, card.id, True))
 
-    visual = ("ran (agent-reported)" if any(f.rule.startswith("visual:") for f in findings)
-              else uicheck.VISUAL_NOT_CONFIGURED)
-    header = uicheck.header_line(scanned, visual, answers)
+    # the skill runs no visual audit in this version: never claim one
+    header = uicheck.header_line(scanned, uicheck.VISUAL_NOT_CONFIGURED, answers, len(left))
     dismissed = [f for f in findings if f.dismissed]
     unverified = [f for f in findings if not f.confirmed and not f.dismissed]
     lines = [header, "", f"# UI audit — {date.today().isoformat()}", "", "## Findings", ""]
@@ -371,6 +381,8 @@ def record_audit(context_dir, source, by):
               for f in dismissed] or ["- none"]
     lines += ["", "## Not verified", ""]
     lines += [f"- {f.rule} at {f.location} — {f.verdict.strip()}" for f in unverified]
+    lines += [f"- static candidate {c.rule} at {c.file}:{c.line} — not addressed: {c.snippet}"
+              for c in left]
     lines += [f"- checklist:{k} — " + (answers[k][1] or "not verified")
               if k in answers else f"- checklist:{k} — not answered"
               for k in uicheck.CHECKLIST_IDS
@@ -411,7 +423,7 @@ def main(argv=None) -> int:
     p.add_argument("--reason", help="why the existing file is replaced")
     p.add_argument("--out", help="directory for the HTML previews (default: a temp dir)")
     p.add_argument("--audit", action="store_true", help="UI audit packet / record")
-    p.add_argument("--path", help="--audit: narrow the scan to a subtree")
+    p.add_argument("--path", help="--audit [--record]: narrow the scan to a subtree")
     p.add_argument("--by", help="--audit --record: who dismissed (default: agent)")
     p.add_argument("--context-dir", help="target .context/ (default: auto-detect)")
     args = p.parse_args(argv)
@@ -421,7 +433,7 @@ def main(argv=None) -> int:
         fail("--audit and --design-system are separate modes; pick one")
     if args.audit:
         if args.record:
-            record_audit(context_dir, args.record, args.by)
+            record_audit(context_dir, args.record, args.by, args.path)
         else:
             print_audit_packet(context_dir, args.briefing, args.path)
         return EXIT_OK

@@ -58,7 +58,7 @@ project to be authorized (exit 5 otherwise).
 3. **Answer the checklist** (`references/checklist.md`) with evidence you actually gathered;
    without evidence answer `not-verified`. A `finding` needs its own `## Finding` block with
    `Rule: checklist:<item-id>`.
-4. **Record**: `python scripts/run.py --audit --record FILE|- [--by NAME]`. One BUG per
+4. **Record**: `python scripts/run.py --audit --record FILE|- [--by NAME] [--path SUB]` (same `--path` as the packet; a dismissal must match a real candidate by line or by snippet in its evidence, else exit 1; candidates you leave unaddressed are listed as not verified and counted in the header). One BUG per
    (rule, file) listing every occurrence, priority from the highest severity; if an open
    cp-ui BUG exists for that key it prints `already open: BUG-NNN` instead (a BUG already in
    `7-done` is a regression and opens a new one). Dismissals go to `.context/ui/dismissals.json`

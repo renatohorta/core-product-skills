@@ -113,8 +113,9 @@ def test_report_header_states_what_was_verified(ctx_env, python_cmd):
     r = _record(ctx_env, python_cmd, doc)
     assert r.returncode == EXIT_OK, r.stdout + r.stderr
     first = _report(ctx).splitlines()[0]
-    assert first.startswith("Verified — static: 1 files · visual: not configured · checklist: ")
-    assert "1/7 answered, 6 not-verified" in first
+    assert first.startswith("Verified — static: 1 files")
+    assert "2 candidates not addressed" in first
+    assert "visual: not configured · checklist: 1/7 answered, 6 not-verified" in first
     assert "visual: not configured" in first and "6 not-verified" in first
 
 
@@ -211,3 +212,67 @@ def test_checklist_ids_match_reference_and_static_checks_documented():
     static = (refs / "static-checks.md").read_text(encoding="utf-8")
     for rule in uicheck.CHECKS:
         assert f"### {rule}\n" in static
+
+
+def test_visual_finding_never_claims_a_visual_run(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env)
+    doc = _finding(1, rule="visual:contrast", verdict="cannot verify — no browser")
+    r = _record(ctx_env, python_cmd, doc)
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    first = _report(ctx).splitlines()[0]
+    assert "visual: not configured" in first and "ran" not in first
+
+
+def test_dismissal_survives_a_line_shift_when_snippet_in_evidence(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env)
+    doc = _finding(2, verdict="dismissed — decorative", ev='<img src="a.png"> is decorative')
+    r = _record(ctx_env, python_cmd, doc)
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    out = ui(["--audit"], ctx_env, python_cmd).stdout
+    assert "src/Home.tsx:1 " not in out and "src/Home.tsx:1:" not in out
+    assert "src/Home.tsx:3" in out
+
+
+def test_dismissal_with_wrong_line_and_no_snippet_is_rejected(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env)
+    r = _record(ctx_env, python_cmd, _finding(2, verdict="dismissed — decorative"))
+    assert r.returncode == EXIT_USAGE
+    assert "src/Home.tsx" in r.stdout and "1" in r.stdout and "3" in r.stdout
+    assert not (ctx / "ui" / "dismissals.json").exists()
+    assert not (ctx / "ui" / "audits").exists()
+
+
+def test_record_scope_matches_packet_path(ctx_env, python_cmd):
+    ctx, root = _project(ctx_env)
+    (root / "lib").mkdir()
+    (root / "lib" / "x.tsx").write_text('<img src="z.png">\n', encoding="utf-8")
+    packet = ui(["--audit", "--path", "src"], ctx_env, python_cmd).stdout
+    assert "--path src" in packet
+    r = _record(ctx_env, python_cmd, _finding(1), "--path", "src")
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    assert _report(ctx).splitlines()[0].startswith("Verified — static: 1 files")
+
+
+def test_unaddressed_candidates_are_listed_not_verified(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env)
+    r = _record(ctx_env, python_cmd, _finding(1))
+    rep = _report(ctx)
+    assert "2 candidates not addressed" in rep.splitlines()[0]
+    not_verified = rep.split("## Not verified")[1].split("## Checklist")[0]
+    assert "src/Home.tsx:3" in not_verified and "src/Home.tsx:5" in not_verified
+    assert "src/Home.tsx:1 " not in not_verified
+
+
+def test_paths_are_normalized_for_grouping(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env)
+    doc = _finding(1, loc="./src/Home.tsx") + _finding(3, loc="src/Home.tsx")
+    _record(ctx_env, python_cmd, doc)
+    bugs = _bugs(ctx)
+    assert len(bugs) == 1 and bugs[0].meta["ui_key"] == "img-no-alt::src/Home.tsx"
+
+
+def test_ok_without_evidence_counts_as_not_verified(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env)
+    _record(ctx_env, python_cmd, "## Checklist\n- width-360: ok\n- dark-mode: ok — checked\n")
+    first = _report(ctx).splitlines()[0]
+    assert "1/7 answered, 6 not-verified" in first

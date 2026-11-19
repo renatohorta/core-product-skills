@@ -6,15 +6,20 @@ Line-based regexes over UI source files (html/css/scss/jsx/tsx/vue/svelte/astro)
 Findings are *candidates*: a human or the visual pass confirms them. A backend-only
 project scans zero files and returns ([], 0) — never a clean bill of health.
 
-Public surface (stable): UI_EXTENSIONS, Candidate, CHECKS, scan.
+Also holds the audit document model (cp-ui --audit): parse_audit, group_key, dismissals,
+open BUG lookup, the report header. Public surface (stable): UI_EXTENSIONS, Candidate,
+CHECKS, scan, SEVERITY_PRIORITY, CHECKLIST_IDS, Finding, parse_audit, group_key.
 Must not import `uikit` (uikit imports this module).
 """
+import hashlib
+import json
 import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 
 from _shared.auditclosure import _matches
+from _shared.pentest import _fields, _finding_blocks, is_confirmed
 
 UI_EXTENSIONS = (".html", ".css", ".scss", ".jsx", ".tsx", ".vue", ".svelte", ".astro")
 
@@ -146,7 +151,7 @@ def _read(path: Path):
         return None
 
 
-def _iter_files(root: Path, exclude, extra_exts=()):
+def _iter_files(root: Path, exclude, extra_exts=(), subpath=""):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in IGNORE_DIRS)
         for name in sorted(filenames):
@@ -154,6 +159,8 @@ def _iter_files(root: Path, exclude, extra_exts=()):
                 continue
             path = Path(dirpath) / name
             rel = path.relative_to(root).as_posix()
+            if subpath and not (rel == subpath or rel.startswith(subpath + "/")):
+                continue
             if any(_matches(p, rel) for p in exclude if p):
                 continue
             yield path, rel
@@ -228,14 +235,18 @@ def _scan_text(rel, text, lines, want_color):
     return out
 
 
-def scan(project_root, exclude, design_system):
-    """-> (candidates, files scanned). Backend-only projects give ([], 0)."""
+def scan(project_root, exclude, design_system, subpath=""):
+    """-> (candidates, files scanned). Backend-only projects give ([], 0).
+
+    `subpath` (optional) narrows the walk to a subtree; paths stay project-relative.
+    """
     root = Path(project_root)
+    subpath = (subpath or "").replace("\\", "/").strip("/")
     token_files = (design_system or {}).get("token_files", []) or []
     cands, scanned = [], 0
     anim = None
     reduced = False
-    for path, rel in _iter_files(root, exclude or [], SCRIPT_EXTENSIONS):
+    for path, rel in _iter_files(root, exclude or [], SCRIPT_EXTENSIONS, subpath):
         if not rel.lower().endswith(UI_EXTENSIONS):
             text = _read(path)
             if text is not None and _REDUCED.search(text):
@@ -259,3 +270,258 @@ def scan(project_root, exclude, design_system):
         cands.append(Candidate("no-reduced-motion", PROJECT, 1, anim,
                                CHECKS["no-reduced-motion"]["severity"]))
     return cands, scanned
+
+
+# ─── audit document model (cp-ui --audit) ───────────────────────────────────
+
+# Copied from cp-operation-pentest (severity word -> card priority).
+SEVERITY_PRIORITY = {"critical": "Must", "high": "Must", "medium": "Should",
+                     "low": "Could", "info": "Won't", "informational": "Won't"}
+_SEVERITY_RANK = {"critical": 5, "high": 4, "medium": 3, "low": 2, "info": 1,
+                  "informational": 1}
+SOURCE = "cp-ui"
+# Must agree with the `### <id>` headings of references/checklist.md (tested).
+CHECKLIST_IDS = ("states-loading-empty-error", "width-360", "keyboard-main-flow",
+                 "dark-mode", "touch-targets", "form-errors-inline", "focus-visible")
+CHECKLIST_STATUSES = ("ok", "finding", "not-applicable", "not-verified")
+ANSWERED = ("ok", "finding", "not-applicable")
+REQUIRED_FIELDS = ("rule", "location", "evidence", "verdict", "severity")
+DISMISSALS = ("ui", "dismissals.json")
+VISUAL_NOT_CONFIGURED = "not configured"
+
+
+@dataclass
+class Finding:
+    rule: str
+    location: str
+    evidence: str
+    verdict: str
+    severity: str
+
+    @property
+    def confirmed(self) -> bool:
+        return is_confirmed(self.verdict)
+
+    @property
+    def dismissed(self) -> bool:
+        return _first_token(self.verdict) == "dismissed"
+
+    @property
+    def reason(self) -> str:
+        """Text after `dismissed —` / `cannot verify —`."""
+        parts = re.split(r"\s*(?:—|–|:|\s-\s)\s*", self.verdict.strip(), maxsplit=1)
+        return parts[1].strip() if len(parts) > 1 else ""
+
+
+def _first_token(verdict: str) -> str:
+    norm = (verdict or "").strip().lower()
+    return re.split(r"[\s:—–-]+", norm, maxsplit=1)[0] if norm else ""
+
+
+def priority_of(severity: str) -> str:
+    return SEVERITY_PRIORITY.get((severity or "").strip().lower(), "Should")
+
+
+def severity_rank(severity: str) -> int:
+    return _SEVERITY_RANK.get((severity or "").strip().lower(), 3)
+
+
+def file_of(location: str) -> str:
+    return (location or "").split(":", 1)[0].strip().replace("\\", "/")
+
+
+def group_key(f: Finding) -> str:
+    return f"{f.rule.strip()}::{file_of(f.location)}"
+
+
+def fingerprint(text: str) -> str:
+    return hashlib.sha1((text or "").strip()[:200].encode("utf-8")).hexdigest()
+
+
+def candidate_key(c: Candidate) -> str:
+    return f"{c.rule}::{c.file}::{fingerprint(c.snippet)}"
+
+
+def _rule_valid(rule: str):
+    rule = rule.strip()
+    if rule in CHECKS:
+        return None
+    if rule.startswith("checklist:"):
+        item = rule.split(":", 1)[1].strip()
+        return None if item in CHECKLIST_IDS else f"unknown checklist item '{item}'"
+    if rule.startswith("visual:") and rule.split(":", 1)[1].strip():
+        return None
+    return (f"unknown rule '{rule}' (use a static check id, checklist:<item-id> "
+            f"or visual:<check>)")
+
+
+def _parse_checklist(text: str, errors: list) -> dict:
+    answers, inside = {}, False
+    for line in (text or "").splitlines():
+        if line.strip().startswith("## "):
+            inside = line.strip().lower() == "## checklist"
+            continue
+        if not inside:
+            continue
+        m = re.match(r"^\s*[-*]\s*([\w-]+)\s*:\s*(.*?)\s*$", line)
+        if not m:
+            continue
+        item, rest = m.group(1), m.group(2)
+        if item not in CHECKLIST_IDS:
+            errors.append(f"Checklist: unknown item '{item}' "
+                          f"(valid: {', '.join(CHECKLIST_IDS)})")
+            continue
+        sm = re.match(r"(not-applicable|not-verified|finding|ok)\b\s*(?:[—–]|--?)?\s*(.*)$",
+                      rest, re.I)
+        if not sm:
+            errors.append(f"Checklist: '{item}' needs one of {', '.join(CHECKLIST_STATUSES)}")
+            continue
+        answers[item] = (sm.group(1).lower(), sm.group(2).strip())
+    return answers
+
+
+def parse_audit(text: str):
+    """(findings, checklist answers {id: (status, evidence)}, errors)."""
+    findings, errors = [], []
+    for i, block in enumerate(_finding_blocks(text), 1):
+        f = _fields(block)
+        missing = [k for k in REQUIRED_FIELDS if not f.get(k)]
+        if missing:
+            errors.append(f"Finding #{i} is missing: {', '.join(missing)} "
+                          f"(needs {', '.join(REQUIRED_FIELDS)})")
+            continue
+        bad = _rule_valid(f["rule"])
+        if bad:
+            errors.append(f"Finding #{i}: {bad}")
+            continue
+        fnd = Finding(f["rule"].strip(), f["location"], f["evidence"], f["verdict"],
+                      f["severity"])
+        if fnd.dismissed and not fnd.reason:
+            errors.append(f"Finding #{i}: a dismissal needs a reason "
+                          f"(`dismissed — <reason>`)")
+            continue
+        findings.append(fnd)
+    answers = _parse_checklist(text, errors)
+    have = {f.rule for f in findings}
+    for item, (status, _) in answers.items():
+        if status == "finding" and f"checklist:{item}" not in have:
+            errors.append(f"Checklist: '{item}' is `finding` but there is no "
+                          f"`## Finding` block with `Rule: checklist:{item}`")
+    return findings, answers, errors
+
+
+def header_line(files_scanned: int, visual_status: str, answers: dict) -> str:
+    """The honest first line of the report: what was and was not verified."""
+    total = len(CHECKLIST_IDS)
+    answered = sum(1 for k in CHECKLIST_IDS if answers.get(k, ("", ""))[0] in ANSWERED)
+    return (f"Verified — static: {files_scanned} files · visual: {visual_status} · "
+            f"checklist: {answered}/{total} answered, {total - answered} not-verified")
+
+
+def parse_checklist_doc(text: str) -> dict:
+    """references/checklist.md -> {id: section body}, from its `### <id>` headings."""
+    out, cur = {}, None
+    for line in (text or "").splitlines():
+        m = re.match(r"^###\s+(\S+)\s*$", line)
+        if m:
+            cur = m.group(1)
+            out[cur] = []
+        elif line.startswith("#"):
+            cur = None
+        elif cur is not None:
+            out[cur].append(line)
+    return {k: "\n".join(v).strip() for k, v in out.items()}
+
+
+# ─── dismissals ──────────────────────────────────────────────────────────
+
+def dismissals_path(context_dir) -> Path:
+    return Path(context_dir).joinpath(*DISMISSALS)
+
+
+def _load_dismissal_rows(context_dir) -> list:
+    try:
+        data = json.loads(dismissals_path(context_dir).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return [r for r in data if isinstance(r, dict)] if isinstance(data, list) else []
+
+
+def load_dismissals(context_dir) -> set:
+    return {str(r.get("key", "")) for r in _load_dismissal_rows(context_dir)}
+
+
+def record_dismissals(context_dir, findings, actor, candidates=()) -> list:
+    """Persist `dismissed` findings. The fingerprint is taken from the matching scan
+    candidate's snippet (so the next packet hides exactly that candidate); the finding's
+    evidence is the fallback. Returns the rows added."""
+    from datetime import datetime
+    rows = _load_dismissal_rows(context_dir)
+    seen = {r.get("key") for r in rows}
+    added = []
+    for f in findings:
+        if not f.dismissed:
+            continue
+        file = file_of(f.location)
+        line = f.location.split(":", 1)[1].strip() if ":" in f.location else ""
+        match = [c for c in candidates if c.rule == f.rule.strip() and c.file == file]
+        exact = [c for c in match if str(c.line) == line.split(":")[0]]
+        pick = exact[0] if exact else (match[0] if len(match) == 1 else None)
+        fp = fingerprint(pick.snippet if pick else f.evidence)
+        key = f"{f.rule.strip()}::{file}::{fp}"
+        if key in seen:
+            continue
+        seen.add(key)
+        row = {"key": key, "rule": f.rule.strip(), "file": file, "fingerprint": fp,
+               "reason": f.reason, "by": actor or "agent",
+               "at": datetime.now().isoformat(timespec="seconds")}
+        rows.append(row)
+        added.append(row)
+    if added:
+        path = dismissals_path(context_dir)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(rows, indent=2, ensure_ascii=False) + "\n",
+                        encoding="utf-8")
+    return added
+
+
+# ─── BUG cards ───────────────────────────────────────────────────────────
+
+def open_bugs_by_key(context_dir) -> dict:
+    """cp-ui BUGs not yet in 7-done, keyed by the `ui_key` stored in their meta."""
+    from _shared import cards
+    out = {}
+    for card in cards.load_all(context_dir).values():
+        key = str(card.meta.get("ui_key", ""))
+        if (card.type == "bug" and card.meta.get("source") == SOURCE and key
+                and card.status != "7-done"):
+            out.setdefault(key, card)
+    return out
+
+
+def _rule_description(rule: str) -> str:
+    if rule in CHECKS:
+        return f"{CHECKS[rule]['summary']} ({CHECKS[rule]['ux_rule']})"
+    if rule.startswith("checklist:"):
+        return f"Checklist item '{rule.split(':', 1)[1]}' failed the audit"
+    return f"Visual check '{rule.split(':', 1)[1]}' failed"
+
+
+def occurrence(f: Finding) -> str:
+    return f"{f.location} — {f.evidence}"
+
+
+def bug_document(rule: str, file: str, group):
+    """(title, body, priority) for the BUG of one (rule, file) group of confirmed findings."""
+    top = max(group, key=lambda f: severity_rank(f.severity))
+    seen, lines = set(), []
+    for f in group:
+        o = occurrence(f)
+        if o not in seen:
+            seen.add(o)
+            lines.append(f"- {o}")
+    body = ("## Symptom\n"
+            f"{_rule_description(rule)}. Severity: {top.severity.strip()}. "
+            f"Found by cp-ui --audit in {file}.\n\n"
+            "## Reproduction\n" + "\n".join(lines) + "\n")
+    return f"[ui] {rule} in {file}", body, priority_of(top.severity)

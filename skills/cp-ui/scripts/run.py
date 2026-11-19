@@ -11,6 +11,11 @@ It never calls a model (ADR-0012): the agent running it is the LLM.
         [--force --reason R]
         validate the chosen document, write design-system/MASTER.md (or
         pages/<PAGE>.md) + tokens.json, log the decision
+  run.py --audit ["<scope>"] [--path SUB]
+        print the read-only audit packet: static candidates, checklist, document format
+  run.py --audit --record FILE|- [--by NAME]
+        validate the audit document, open one BUG per (rule, file) group of confirmed
+        findings, store dismissals, write .context/ui/audits/<date>.md
 
 Usage:
   python run.py --design-system "legal saas dashboard" [--context-dir D]
@@ -36,7 +41,7 @@ _HERE = str(Path(__file__).resolve().parent)
 if _HERE not in sys.path:
     sys.path.insert(0, _HERE)
 
-from _shared import context, uikit  # noqa: E402
+from _shared import cards, context, uicheck, uikit  # noqa: E402
 from _shared.discipline import cmdline, fail, read_document  # noqa: E402
 from _shared.rup import EXIT_OK, setup_console  # noqa: E402
 
@@ -219,6 +224,180 @@ def record(context_dir, source, chosen_by, page, force, reason, product):
     print(f"Decision logged in {decisions}")
 
 
+# ─── --audit ────────────────────────────────────────────────────────────────
+
+CHECKLIST_REF = _SKILL_DIR / "references" / "checklist.md"
+
+
+def load_profile(context_dir) -> dict:
+    """`.context/ui/profile.json` (optional). Unknown keys are left to other tasks."""
+    path = Path(context_dir) / "ui" / "profile.json"
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as e:
+        fail(f"cannot read {path}: {e}")
+    if not isinstance(data, dict):
+        fail(f"{path} must contain a JSON object")
+    return data
+
+
+def excludes_of(context_dir) -> list:
+    ex = load_profile(context_dir).get("exclude", [])
+    if not isinstance(ex, list):
+        fail("profile.json: `exclude` must be a list of paths/globs")
+    return [str(x) for x in ex]
+
+
+def _scan(context_dir, subpath=""):
+    ds = uikit.load_design_system(context_dir)
+    return uicheck.scan(project_root(context_dir), excludes_of(context_dir), ds, subpath)
+
+
+def print_audit_packet(context_dir, scope, subpath):
+    context.require_consent(context_dir)
+    cands, scanned = _scan(context_dir, subpath)
+    dismissed = uicheck.load_dismissals(context_dir)
+    shown = [c for c in cands if uicheck.candidate_key(c) not in dismissed]
+    hidden = len(cands) - len(shown)
+    try:
+        items = uicheck.parse_checklist_doc(CHECKLIST_REF.read_text(encoding="utf-8"))
+    except OSError:
+        items = {}
+    me = Path(__file__).resolve()
+    record_cmd = cmdline([sys.executable, me, "--audit", "--record", "FILE|-", "--by", "<NAME>"])
+
+    print(f"# UI audit — {scope or 'the whole front end'}\n")
+    print("You are the auditor. Verify every candidate in the source (a regex hit is a "
+          "candidate, not a bug), answer the checklist with evidence, then record ONE "
+          "document. Say only what you verified: unverified items stay `not-verified`.\n")
+    print("Header the record will write (visual layer: " + uicheck.VISUAL_NOT_CONFIGURED + "):\n")
+    print("    " + uicheck.header_line(scanned, uicheck.VISUAL_NOT_CONFIGURED, {}) + "\n")
+    if scanned == 0:
+        print("[!] 0 UI files scanned — a backend-only project, a wrong --path or an over-broad "
+              "`exclude`. This is NOT a clean bill of health.\n")
+
+    print(f"## Static candidates ({len(shown)}" + (f", {hidden} hidden as dismissed" if hidden else "")
+          + ")\n")
+    for c in shown:
+        print(f"- `{c.rule}` [{c.severity}] {c.file}:{c.line} — {c.snippet}")
+    if not shown:
+        print("- (none)")
+    if hidden:
+        print(f"\n{hidden} candidate(s) hidden: dismissed earlier "
+              f"(.context/ui/dismissals.json).")
+    print("\nWhat each rule means and how to dismiss a false positive: "
+          "references/static-checks.md\n")
+
+    print("## Checklist (answer every item with evidence)\n")
+    for item in uicheck.CHECKLIST_IDS:
+        print(f"### {item}\n{items.get(item, '(see references/checklist.md)')}\n")
+
+    print("## Audit document to write\n")
+    print("```")
+    print("## Finding")
+    print("Rule: img-no-alt            # a static rule id | checklist:<item-id> | visual:<check>")
+    print("Location: src/pages/Home.tsx:12")
+    print("Evidence: <what you saw: code or a screenshot path>")
+    print("Verdict: confirmed          # or: dismissed — <reason>  /  cannot verify — <why>")
+    print("Severity: Critical|High|Medium|Low")
+    print("")
+    print("## Checklist")
+    print("- states-loading-empty-error: ok | finding | not-applicable | not-verified — <evidence>")
+    print("```\n")
+    print("Only `Verdict: confirmed` opens a BUG (one per rule and file; the occurrences are "
+          "listed in it). `dismissed — <reason>` hides that candidate from future packets. "
+          "Anything else opens nothing and is reported as not verified. A checklist item "
+          "answered `finding` needs its own `## Finding` block with `Rule: checklist:<item-id>`.\n")
+    print("## When done\n")
+    print(f"- Record: `{record_cmd}`")
+
+
+def _report_path(context_dir) -> Path:
+    folder = Path(context_dir) / "ui" / "audits"
+    stamp = date.today().isoformat()
+    path = folder / f"{stamp}.md"
+    n = 2
+    while path.exists():
+        path = folder / f"{stamp}-{n}.md"
+        n += 1
+    return path
+
+
+def record_audit(context_dir, source, by):
+    context.ensure_writable(context_dir)
+    text = read_document(source).strip()
+    findings, answers, errors = uicheck.parse_audit(text)
+    if errors:
+        print("Audit document rejected:")
+        for e in errors:
+            print(f"- {e}")
+        sys.exit(1)
+
+    cands, scanned = _scan(context_dir)
+    uicheck.record_dismissals(context_dir, findings, (by or "").strip() or "agent", cands)
+
+    groups = {}
+    for f in findings:
+        if f.confirmed:
+            groups.setdefault(uicheck.group_key(f), []).append(f)
+    open_bugs = uicheck.open_bugs_by_key(context_dir)
+    results = []  # (key, group, card id, created?)
+    for key, group in groups.items():
+        if key in open_bugs:
+            results.append((key, group, open_bugs[key].id, False))
+            continue
+        rule, file = key.split("::", 1)
+        title, body, priority = uicheck.bug_document(rule, file, group)
+        card = cards.create(context_dir, "bug", title, body, priority=priority,
+                            source=uicheck.SOURCE)
+        cards.set_meta(card, "ui_key", key)
+        results.append((key, group, card.id, True))
+
+    visual = ("ran (agent-reported)" if any(f.rule.startswith("visual:") for f in findings)
+              else uicheck.VISUAL_NOT_CONFIGURED)
+    header = uicheck.header_line(scanned, visual, answers)
+    dismissed = [f for f in findings if f.dismissed]
+    unverified = [f for f in findings if not f.confirmed and not f.dismissed]
+    lines = [header, "", f"# UI audit — {date.today().isoformat()}", "", "## Findings", ""]
+    for key, group, cid, created in results:
+        lines.append(f"- {key} — " + (f"{cid} (opened)" if created else f"already open: {cid}"))
+        lines += [f"  - {uicheck.occurrence(f)} [{f.severity.strip()}]" for f in group]
+    if not results:
+        lines.append("- none confirmed")
+    lines += ["", "## Dismissed", ""]
+    lines += [f"- {f.rule} at {f.location} — {f.reason} (by {(by or '').strip() or 'agent'})"
+              for f in dismissed] or ["- none"]
+    lines += ["", "## Not verified", ""]
+    lines += [f"- {f.rule} at {f.location} — {f.verdict.strip()}" for f in unverified]
+    lines += [f"- checklist:{k} — " + (answers[k][1] or "not verified")
+              if k in answers else f"- checklist:{k} — not answered"
+              for k in uicheck.CHECKLIST_IDS
+              if answers.get(k, ("not-verified", ""))[0] == "not-verified"]
+    lines += ["", "## Checklist", "", "| Item | Result | Evidence |", "|---|---|---|"]
+    for k in uicheck.CHECKLIST_IDS:
+        status, ev = answers.get(k, ("not-verified", "not answered"))
+        lines.append(f"| {k} | {status} | {ev.replace('|', '/')} |")
+    report = _report_path(context_dir)
+    report.parent.mkdir(parents=True, exist_ok=True)
+    report.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    created = [cid for _, _, cid, new in results if new]
+    context.append_event(context_dir, skill=SKILL_NAME,
+                         what=f"ui audit recorded: {len(created)} BUG(s) opened, "
+                              f"{len(dismissed)} dismissed")
+    print(header)
+    n_conf = sum(len(g) for _, g, _, _ in results)
+    print(f"{n_conf} confirmed finding(s), {len(dismissed)} dismissed, "
+          f"{len(unverified)} not verified.")
+    print(f"BUG cards opened: {', '.join(created) if created else 'none'}")
+    for key, _, cid, new in results:
+        if not new:
+            print(f"already open: {cid} ({key})")
+    print(f"Report: {report}")
+
+
 def main(argv=None) -> int:
     setup_console()
     p = argparse.ArgumentParser(description="cp-ui: design system for the front end")
@@ -231,12 +410,23 @@ def main(argv=None) -> int:
     p.add_argument("--force", action="store_true", help="overwrite an existing file (needs --reason)")
     p.add_argument("--reason", help="why the existing file is replaced")
     p.add_argument("--out", help="directory for the HTML previews (default: a temp dir)")
+    p.add_argument("--audit", action="store_true", help="UI audit packet / record")
+    p.add_argument("--path", help="--audit: narrow the scan to a subtree")
+    p.add_argument("--by", help="--audit --record: who dismissed (default: agent)")
     p.add_argument("--context-dir", help="target .context/ (default: auto-detect)")
     args = p.parse_args(argv)
     context_dir = context.resolve_context_dir(args.context_dir)
 
+    if args.audit and args.design_system:
+        fail("--audit and --design-system are separate modes; pick one")
+    if args.audit:
+        if args.record:
+            record_audit(context_dir, args.record, args.by)
+        else:
+            print_audit_packet(context_dir, args.briefing, args.path)
+        return EXIT_OK
     if not args.design_system:
-        fail("choose a mode: --design-system")
+        fail("choose a mode: --design-system or --audit")
     if args.record:
         record(context_dir, args.record, args.chosen_by, args.page, args.force,
                args.reason, args.product)

@@ -44,4 +44,27 @@ Exit codes: 0 ok · 1 usage / invalid document / `--chosen-by` mismatch / overwr
 
 ## Audit
 
-Added in a later task.
+Static UI check of the code, plus a checklist the agent verifies. The packet needs the
+project to be authorized (exit 5 otherwise).
+
+1. **Packet** (read-only): `python scripts/run.py --audit ["<scope>"] [--path SUB]`. It shows
+   the honest header (static files scanned, `visual: not configured`, checklist counts),
+   the regex candidates (minus those dismissed earlier, with how many were hidden), the seven
+   checklist items and the document format. `0 files` means nothing was scanned, not "clean".
+   Files to skip: `exclude` list in `.context/ui/profile.json`.
+2. **Confirm or dismiss each candidate** by reading the code. What each rule means and its
+   usual false positives: `references/static-checks.md`. Verdicts: `confirmed`,
+   `dismissed — <reason>`, `cannot verify — <why>`; only `confirmed` opens a BUG.
+3. **Answer the checklist** (`references/checklist.md`) with evidence you actually gathered;
+   without evidence answer `not-verified`. A `finding` needs its own `## Finding` block with
+   `Rule: checklist:<item-id>`.
+4. **Record**: `python scripts/run.py --audit --record FILE|- [--by NAME]`. One BUG per
+   (rule, file) listing every occurrence, priority from the highest severity; if an open
+   cp-ui BUG exists for that key it prints `already open: BUG-NNN` instead (a BUG already in
+   `7-done` is a regression and opens a new one). Dismissals go to `.context/ui/dismissals.json`
+   (`--by`, default `agent`); the report goes to `.context/ui/audits/<date>.md` (`-2`, `-3`
+   on the same day), its first line stating what was and was not verified. Exit 0 even with
+   findings; 1 on an invalid document (unknown rule/item, missing field, a `finding` without
+   its block).
+
+Audit commands: `--audit ["<scope>"] [--path SUB]` — packet · `--audit --record FILE|- [--by NAME]` — record.

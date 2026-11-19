@@ -70,22 +70,28 @@ class Candidate:
 
 
 _HEX = re.compile(r"#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b")
-_FUNC_COLOR = re.compile(r"\b(?:rgba?|hsla?)\(")
+_FUNC_COLOR = re.compile(r"\b(?:rgba?|hsla?)\(\s*(?!var\(|theme\()")
 _CSS_VAR_DEF = re.compile(r"^\s*(?:--[\w-]+|\$[\w-]+)\s*:")
 _VAR_DEF_INLINE = re.compile(r"(?<![\w-])--[\w-]+\s*:\s*[^;}]*")
-_IMG = re.compile(r"<img\b", re.I)
-_BUTTON = re.compile(r"<button\b([^>]*)>(.*?)</button>", re.I)
+_TAG = re.compile(r"<(img|button|a|li|NavLink|Link)\b", re.I)
+_NAV_CTX = re.compile(r"""<nav\b|role\s*=\s*["']navigation|class(?:Name)?\s*=\s*["'][^"']*\bnav""", re.I)
 _NAME_ATTR = re.compile(r"aria-label(?:ledby)?\s*=|\btitle\s*=", re.I)
 _OUTLINE = re.compile(r"(?<![\w-])outline-none\b|\boutline\s*:\s*(?:none|0)\b")
-_OUTLINE_OK = re.compile(r"focus-visible|focus:ring|focus:outline|focus:border|\bring-|:focus\b.*(?:box-shadow|border)")
+# a real visible replacement: ring/shadow/sized outline under a focus variant, or CSS focus rule
+# with box-shadow / a non-none outline. `focus:outline-none` is NOT a replacement.
+_OUTLINE_OK = re.compile(
+    r"focus(?:-visible|-within)?:(?:ring|shadow|border-\S)"
+    r"|focus(?:-visible|-within)?:outline-(?!none\b|hidden\b)\S"
+    r"|:focus(?:-visible|-within)?\b[^{]*\{[^}]*(?:box-shadow|outline\s*:\s*(?!none|0\b))")
 _ZOOM = re.compile(r"user-scalable\s*=\s*(?:no|0)\b|maximum-scale\s*=\s*1(?:\.0+)?(?![\d.])", re.I)
 _HTML_TAG = re.compile(r"<html\b", re.I)
 _VIEWPORT = re.compile(r"""name\s*=\s*["']?viewport""", re.I)
 _FONT_CSS = re.compile(r"font-size\s*:\s*(\d+(?:\.\d+)?)px", re.I)
 _FONT_TW = re.compile(r"text-\[(\d+(?:\.\d+)?)px\]")
 _EMOJI = ("[\U0001F000-\U0001FAFF☀-➿⭐⭕⌚⌛⏩-⏳]")
-_EMOJI_ICON = re.compile(r"<(?:button|a|li|NavLink|Link)\b[^>]*>\s*" + _EMOJI, re.I)
+_EMOJI_START = re.compile(r"\s*" + _EMOJI)
 _ANIM = re.compile(r"@keyframes|\banimation(?:-name)?\s*:|\banimate-[a-z]|framer-motion|\bmotion\.\w")
+SCRIPT_EXTENSIONS = (".js", ".ts", ".mjs", ".cjs")
 _REDUCED = re.compile(r"prefers-reduced-motion|useReducedMotion|motion-reduce|motion-safe")
 
 
@@ -103,6 +109,34 @@ def _tag_window(lines, i, col=0, span=8) -> str:
     return out.split(">", 1)[0]
 
 
+def _open_tag(lines, i, col, span=8):
+    """Brace/quote-aware opening tag at lines[i][col:] -> (tag text, text after its '>').
+
+    Skips `{...}` and quoted strings so the `>` of an arrow (`=>`) does not end the tag.
+    Continues over following lines. Returns (text, "") when the tag never closes.
+    """
+    text = "\n".join(lines[i:i + span + 1])
+    pos = col
+    depth = 0
+    quote = ""
+    n = len(text)
+    while pos < n:
+        ch = text[pos]
+        if quote:
+            if ch == quote:
+                quote = ""
+        elif ch in "\"'`":
+            quote = ch
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth = max(0, depth - 1)
+        elif ch == ">" and depth == 0:
+            return text[col:pos], text[pos + 1:]
+        pos += 1
+    return text[col:], ""
+
+
 def _read(path: Path):
     try:
         if path.stat().st_size > MAX_BYTES:
@@ -112,11 +146,11 @@ def _read(path: Path):
         return None
 
 
-def _iter_files(root: Path, exclude):
+def _iter_files(root: Path, exclude, extra_exts=()):
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = sorted(d for d in dirnames if d not in IGNORE_DIRS)
         for name in sorted(filenames):
-            if not name.lower().endswith(UI_EXTENSIONS):
+            if not name.lower().endswith(UI_EXTENSIONS + tuple(extra_exts)):
                 continue
             path = Path(dirpath) / name
             rel = path.relative_to(root).as_posix()
@@ -165,23 +199,27 @@ def _scan_text(rel, text, lines, want_color):
 
     for i, ln in enumerate(lines):
         flagged = set()
-        for m in _IMG.finditer(ln):
-            if not re.search(r"\balt\b", _tag_window(lines, i, m.start()), re.I):
-                flagged.add("img-no-alt")
-        for m in _BUTTON.finditer(ln):
-            inner = m.group(2)
-            if (not _NAME_ATTR.search(m.group(1)) and "sr-only" not in inner
-                    and re.search(r"<\w", inner)
-                    and not re.sub(r"<[^>]*>|\s+", "", inner)):
-                flagged.add("icon-button-no-name")
+        for m in _TAG.finditer(ln):
+            kind = m.group(1).lower()
+            tag, rest = _open_tag(lines, i, m.start())
+            if kind == "img":
+                if not re.search(r"\balt\b", tag, re.I):
+                    flagged.add("img-no-alt")
+            elif kind == "button":
+                inner = rest.split("</button>", 1)[0] if "</button>" in rest else None
+                if (inner is not None and not _NAME_ATTR.search(tag)
+                        and "sr-only" not in inner and re.search(r"<\w", inner)
+                        and not re.sub(r"<[^>]*>|\s+", "", inner)):
+                    flagged.add("icon-button-no-name")
+            if (kind != "img" and _EMOJI_START.match(rest)
+                    and (kind != "li" or _NAV_CTX.search(ln))):
+                flagged.add("emoji-icon")
         if _OUTLINE.search(ln) and not _OUTLINE_OK.search(ln):
             flagged.add("outline-removed")
         if _ZOOM.search(ln):
             flagged.add("zoom-disabled")
         if any(float(v) < 12 for v in _FONT_CSS.findall(ln) + _FONT_TW.findall(ln)):
             flagged.add("tiny-font")
-        if _EMOJI_ICON.search(ln):
-            flagged.add("emoji-icon")
         if want_color and _raw_color(ln):
             flagged.add("raw-color")
         for rule in CHECKS:  # stable order
@@ -197,7 +235,12 @@ def scan(project_root, exclude, design_system):
     cands, scanned = [], 0
     anim = None
     reduced = False
-    for path, rel in _iter_files(root, exclude or []):
+    for path, rel in _iter_files(root, exclude or [], SCRIPT_EXTENSIONS):
+        if not rel.lower().endswith(UI_EXTENSIONS):
+            text = _read(path)
+            if text is not None and _REDUCED.search(text):
+                reduced = True
+            continue
         text = _read(path)
         if text is None:
             continue

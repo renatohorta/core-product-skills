@@ -145,3 +145,45 @@ def test_binary_file_never_crashes(tmp_path):
 def test_snippet_truncated(tmp_path):
     r = _scan(tmp_path, {"a.tsx": "<img src='a' " + "x" * 300 + "/>\n"})
     assert len(r[0][0].snippet) <= 160
+
+
+def test_arrow_handlers_do_not_break_tag_matching(tmp_path):
+    r = _scan(tmp_path, {"a.tsx": "<button onClick={() => go()}><svg/></button>\n"})
+    assert _rules(r) == ["icon-button-no-name"]
+    r = _scan(tmp_path, {"b.tsx": "<a onClick={() => x()}>🔍 Go</a>\n"})
+    assert _rules(r) == ["emoji-icon"]
+    r = _scan(tmp_path, {"c.tsx": '<img onLoad={() => x()} alt="a">\n'})
+    assert r[0] == []
+    r = _scan(tmp_path, {"d.tsx": "<img onLoad={() => x()} src=\"a\">\n"})
+    assert _rules(r) == ["img-no-alt"]
+    r = _scan(tmp_path, {"e.tsx": '<button aria-label="x" onClick={() => go()}><svg/></button>\n'})
+    assert r[0] == []
+
+
+def test_outline_focus_variant_is_not_a_replacement(tmp_path):
+    for cls in ("focus:outline-none", "focus-visible:outline-none"):
+        r = _scan(tmp_path, {"a.tsx": f'<input className="{cls}" />\n'})
+        assert _rules(r) == ["outline-removed"], cls
+    for cls in ("outline-none focus:ring-2", "outline-none focus-visible:outline-2",
+                "outline-none focus-visible:shadow-md"):
+        assert _scan(tmp_path, {"a.tsx": f'<input className="{cls}" />\n'})[0] == [], cls
+    assert _scan(tmp_path, {"a.css": "a:focus-visible { outline: none; box-shadow: 0 0 0 2px red; }\n"})[0] == []
+
+
+def test_raw_color_token_functions_ignored(tmp_path):
+    r = _scan(tmp_path, {"a.css": "p { background: hsl(var(--background)); color: rgb(var(--x) / .5); border-color: hsl(theme(colors.x)); }\n"})
+    assert r[0] == []
+    r = _scan(tmp_path, {"b.css": "p { background: hsl(210 40% 90%); }\n"})
+    assert _rules(r) == ["raw-color"]
+
+
+def test_emoji_icon_not_for_plain_li(tmp_path):
+    assert _scan(tmp_path, {"a.html": "<li>✅ Free plan</li>\n"})[0] == []
+    assert _rules(_scan(tmp_path, {"b.html": '<ul class="nav"><li>🏠 Home</li></ul>\n'})) == ["emoji-icon"]
+
+
+def test_reduced_motion_honored_in_script_files(tmp_path):
+    r = _scan(tmp_path, {"a.css": "@keyframes s {}\n",
+                         "m.ts": "const q = matchMedia('(prefers-reduced-motion: reduce)')\n"})
+    assert r[0] == []
+    assert r[1] == 1  # only UI files count as scanned

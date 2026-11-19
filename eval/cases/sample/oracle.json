@@ -1,0 +1,8 @@
+{
+  "case": "sample",
+  "vulns": [
+    {"file": "app/db.py", "class": "injection", "vulnerable": true},
+    {"file": "app/fetch.py", "class": "ssrf", "vulnerable": true},
+    {"file": "app/safe.py", "class": "injection", "vulnerable": false}
+  ]
+}

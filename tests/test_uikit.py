@@ -76,3 +76,20 @@ def test_load_design_system(tmp_path):
     uikit.ds_dir(tmp_path).mkdir()
     (uikit.ds_dir(tmp_path) / "MASTER.md").write_text("## Colors\n- primary: nope\n", encoding="utf-8")
     assert uikit.load_design_system(tmp_path)["colors"] == {"primary": "nope"}
+
+
+def test_decision_accepts_bulleted_fields():
+    bulleted = (GOOD.replace("Chosen by:", "- Chosen by:")
+                .replace("Alternatives shown:", "- Alternatives shown:")
+                .replace("Why:", "- Why:"))
+    s, errors = uikit.parse_master(bulleted)
+    assert errors == []
+    assert s["decision"] == {"chosen_by": "Renato", "alternatives": "A, B, C",
+                             "why": "fits the brand"}
+
+
+def test_load_design_system_non_utf8_does_not_raise(tmp_path):
+    uikit.ds_dir(tmp_path).mkdir()
+    (uikit.ds_dir(tmp_path) / "MASTER.md").write_bytes(b"## Colors\n- primary: \xff\xfe\n")
+    s = uikit.load_design_system(tmp_path)
+    assert s["colors"] == {}

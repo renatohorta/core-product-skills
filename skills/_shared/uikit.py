@@ -15,7 +15,7 @@ CONTRAST_PAIRS = (("foreground", "background"), ("on_primary", "primary"),
 MIN_CONTRAST = 4.5
 
 _HEX = re.compile(r"^#[0-9A-Fa-f]{6}$")
-_KV = re.compile(r"^\s*[-*]\s*([A-Za-z_][\w ]*?)\s*:\s*(.*?)\s*$")
+_KV = re.compile(r"^\s*(?:[-*]\s+)?([A-Za-z_][\w ]*?)\s*:\s*(.*?)\s*$")
 _DECISION = (("chosen_by", "Chosen by"), ("alternatives", "Alternatives shown"), ("why", "Why"))
 
 
@@ -35,6 +35,7 @@ def _sections(text):
 
 
 def _bullets(body):
+    """`key: value` lines (optional leading `- `) -> [(snake_case key, value)]."""
     pairs = []
     for line in body.splitlines():
         m = _KV.match(line)
@@ -86,12 +87,10 @@ def parse_master(text):
         if not typography[k]:
             errors.append(f"Typography: missing '{k}' font")
 
-    dec_raw = {k.lower(): v for k, v in
-               (m.groups() for m in (re.match(r"^\s*([^:]+?)\s*:\s*(.*?)\s*$", l)
-                                     for l in secs.get("decision", "").splitlines()) if m)}
+    dec_raw = dict(_bullets(secs.get("decision", "")))
     decision = {}
     for key, label in _DECISION:
-        decision[key] = dec_raw.get(label.lower(), "")
+        decision[key] = dec_raw.get(label.lower().replace(" ", "_"), "")
         if not decision[key]:
             errors.append(f"Decision: missing '{label}'")
 
@@ -124,4 +123,8 @@ def load_design_system(context_dir):
     path = ds_dir(context_dir) / "MASTER.md"
     if not path.is_file():
         return None
-    return parse_master(path.read_text(encoding="utf-8"))[0]
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        text = ""  # unreadable (e.g. non-UTF-8): parsed as an empty, hence invalid, doc
+    return parse_master(text)[0]

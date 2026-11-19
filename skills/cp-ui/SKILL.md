@@ -48,7 +48,7 @@ Static UI check of the code, plus a checklist the agent verifies. The packet nee
 project to be authorized (exit 5 otherwise).
 
 1. **Packet** (read-only): `python scripts/run.py --audit ["<scope>"] [--path SUB]`. It shows
-   the honest header (static files scanned, `visual: not configured`, checklist counts),
+   the honest header (static files scanned, the visual status, checklist counts),
    the regex candidates (minus those dismissed earlier, with how many were hidden), the seven
    checklist items and the document format. `0 files` means nothing was scanned, not "clean".
    Files to skip: `exclude` list in `.context/ui/profile.json`.
@@ -68,3 +68,25 @@ project to be authorized (exit 5 otherwise).
    its block).
 
 Audit commands: `--audit ["<scope>"] [--path SUB]` — packet · `--audit --record FILE|- [--by NAME]` — record.
+
+### Visual audit (optional)
+
+Off by default (`visual: not configured`). To enable it in your product:
+
+1. Copy `templates/ui-audit.mjs` to `scripts/ui-audit.mjs` and run
+   `npm i -D playwright && npx playwright install chromium`.
+2. Start your app yourself (cp-ui never starts or stops servers).
+3. Add to `.context/ui/profile.json`:
+   `{"visual_audit": {"command": "node scripts/ui-audit.mjs --url http://localhost:5173 --out .ui-audit", "report": ".ui-audit/report.json", "timeout_s": 120}}`
+   (`report` is relative to the project root; `timeout_s` defaults to 120).
+
+The packet runs the command once (deleting any old report first) and lists each finding as a
+candidate (`Rule: visual:<check>`, `Location: <viewport> <selector>`, evidence with the
+screenshot path); the run is saved to `.context/ui/visual-last.json`. The record never
+re-runs the command: its header reads that file when its scope (`--path`) matches the packet's.
+Header: `visual: ran (k viewports)` (only from that file) · `visual: not configured` (no
+`visual_audit`/`command`) · `visual: failed (<reason>)` — `timeout after 120s`, `exit code 2`,
+`report not found: <path>`, `invalid report: <detail>`, `command not found: <name>`, or
+`no visual run for this scope — run the packet first`. A confirmed `visual:` finding opens a
+BUG like any other, grouped by rule and viewport (`visual:<check>::<viewport>`); visual
+candidates you leave unaddressed are listed under `## Not verified`.

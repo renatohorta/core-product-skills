@@ -15,6 +15,8 @@ import hashlib
 import json
 import os
 import re
+import shlex
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -333,8 +335,17 @@ def file_of(location: str) -> str:
     return path
 
 
+def finding_file(f: Finding) -> str:
+    """The grouping 'file' of a finding: the viewport for `visual:` rules (Location is
+    `<viewport> <selector>`), the path before `:line` for everything else."""
+    if f.rule.strip().startswith("visual:"):
+        parts = (f.location or "").split()
+        return parts[0] if parts else ""
+    return file_of(f.location)
+
+
 def group_key(f: Finding) -> str:
-    return f"{f.rule.strip()}::{file_of(f.location)}"
+    return f"{f.rule.strip()}::{finding_file(f)}"
 
 
 def fingerprint(text: str) -> str:
@@ -502,7 +513,7 @@ def record_dismissals(context_dir, findings, actor, candidates=()) -> list:
     for f in findings:
         if not f.dismissed:
             continue
-        file = file_of(f.location)
+        file = finding_file(f)
         pick = match_candidate(f, candidates)[0] if f.rule.strip() in CHECKS else None
         fp = fingerprint(pick.snippet if pick else f.evidence)
         key = f"{f.rule.strip()}::{file}::{fp}"
@@ -574,3 +585,124 @@ def bug_document(rule: str, file: str, group):
             f"Found by cp-ui --audit in {file}.\n\n"
             "## Reproduction\n" + "\n".join(lines) + "\n")
     return f"[ui] {rule} in {file}", body, priority_of(top.severity)
+
+
+# ─── optional visual layer ───────────────────────────────────────────────
+
+VISUAL_LAST = ("ui", "visual-last.json")
+VISUAL_DEFAULT_TIMEOUT = 120
+_VISUAL_FIELDS = ("check", "severity", "viewport", "selector", "detail", "screenshot")
+
+
+def visual_last_path(context_dir) -> Path:
+    return Path(context_dir).joinpath(*VISUAL_LAST)
+
+
+def _failed(reason: str):
+    return f"failed ({reason})", []
+
+
+def run_visual(project_root, profile: dict):
+    """Run the product's own visual-audit command -> (status, findings). Never raises and
+    never starts or stops a server (the command is the product's)."""
+    cfg = (profile or {}).get("visual_audit")
+    if not isinstance(cfg, dict) or not str(cfg.get("command") or "").strip():
+        return VISUAL_NOT_CONFIGURED, []
+    root = Path(project_root)
+    report = root / str(cfg.get("report") or ".ui-audit/report.json")
+    timeout_s = cfg.get("timeout_s", VISUAL_DEFAULT_TIMEOUT)
+    if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)) or timeout_s <= 0:
+        timeout_s = VISUAL_DEFAULT_TIMEOUT
+    try:
+        argv = shlex.split(str(cfg["command"]))
+    except ValueError as e:
+        return _failed(f"invalid command: {e}")
+    if not argv:
+        return VISUAL_NOT_CONFIGURED, []
+    try:  # a stale report must never be mistaken for this run's
+        report.unlink()
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        return _failed(f"cannot remove old report: {e}")
+    try:
+        proc = subprocess.run(argv, cwd=root, timeout=timeout_s, capture_output=True)
+    except subprocess.TimeoutExpired:
+        return _failed(f"timeout after {timeout_s:g}s")
+    except FileNotFoundError:
+        return _failed(f"command not found: {argv[0]}")
+    except OSError as e:
+        return _failed(f"cannot run {argv[0]}: {e}")
+    if proc.returncode != 0:
+        return _failed(f"exit code {proc.returncode}")
+    try:
+        data = json.loads(report.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return _failed(f"report not found: {cfg.get('report') or '.ui-audit/report.json'}")
+    except (OSError, ValueError) as e:
+        return _failed(f"invalid report: {e}")
+    if not isinstance(data, dict) or not isinstance(data.get("viewports"), list) \
+            or not isinstance(data.get("findings"), list):
+        return _failed("invalid report: expected an object with `viewports` and `findings` lists")
+    findings = []
+    for i, f in enumerate(data["findings"]):
+        if not isinstance(f, dict) or not str(f.get("check") or "").strip():
+            return _failed(f"invalid report: finding #{i + 1} has no `check`")
+        findings.append({k: str(f.get(k) or "") for k in _VISUAL_FIELDS})
+    return f"ran ({len(data['viewports'])} viewports)", findings
+
+
+def visual_location(v: dict) -> str:
+    return f"{v['viewport']} {v['selector']}".strip()
+
+
+def visual_evidence(v: dict) -> str:
+    shot = f" (screenshot: {v['screenshot']})" if v.get("screenshot") else ""
+    return f"{v['detail']}{shot}"
+
+
+def save_visual_last(context_dir, status, scope, findings):
+    from datetime import datetime
+    path = visual_last_path(context_dir)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"status": status,
+                                "at": datetime.now().isoformat(timespec="seconds"),
+                                "scope": scope or "", "findings": findings},
+                               indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+
+
+def load_visual_last(context_dir):
+    try:
+        data = json.loads(visual_last_path(context_dir).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) and isinstance(data.get("status"), str) else None
+
+
+def visual_status_for_record(context_dir, profile, scope):
+    """(status, stored findings) for the record: only the last packet run for this scope can
+    say `ran`; the record never re-runs the command."""
+    last = load_visual_last(context_dir)
+    if last is not None and (last.get("scope") or "") == (scope or ""):
+        fs = [f for f in last.get("findings", []) if isinstance(f, dict)]
+        return last["status"], [{k: str(f.get(k) or "") for k in _VISUAL_FIELDS} for f in fs]
+    if not isinstance((profile or {}).get("visual_audit"), dict):
+        return VISUAL_NOT_CONFIGURED, []
+    return "failed (no visual run for this scope — run the packet first)", []
+
+
+def unaddressed_visual(findings, visual_findings) -> list:
+    """Stored visual findings that no `visual:<check>` finding of this record covers
+    (same check and viewport, and the selector when the record names one)."""
+    out = []
+    for v in visual_findings:
+        covered = False
+        for f in findings:
+            if f.rule.strip() != f"visual:{v['check']}":
+                continue
+            if finding_file(f) == v["viewport"] and (not v["selector"] or v["selector"] in f.location):
+                covered = True
+                break
+        if not covered:
+            out.append(v)
+    return out

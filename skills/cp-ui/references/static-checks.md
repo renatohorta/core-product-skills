@@ -62,3 +62,9 @@ file honours `prefers-reduced-motion`. Why: motion can trigger vestibular proble
 `@media (prefers-reduced-motion: reduce)` rule, `motion-reduce:` utilities or
 `useReducedMotion`. False positives: handled in a file outside the scan (a global stylesheet
 under an `exclude`) — dismiss and name it.
+
+## Visual rules (`visual:<check>`)
+
+Come from the optional visual audit (see SKILL.md). Location is `<viewport> <selector>`;
+a confirmed visual finding is grouped into one BUG per `visual:<check>` and viewport
+(key `visual:<check>::<viewport>`, the viewport playing the role of the file).

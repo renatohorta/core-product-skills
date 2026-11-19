@@ -265,6 +265,11 @@ def print_audit_packet(context_dir, scope, subpath):
         items = uicheck.parse_checklist_doc(CHECKLIST_REF.read_text(encoding="utf-8"))
     except OSError:
         items = {}
+    visual_status, visual = uicheck.run_visual(project_root(context_dir), load_profile(context_dir))
+    try:
+        uicheck.save_visual_last(context_dir, visual_status, subpath, visual)
+    except OSError:
+        pass  # a read-only .context/: the record then reports no visual run for this scope
     me = Path(__file__).resolve()
     record_args = [sys.executable, me, "--audit", "--record", "FILE|-", "--by", "<NAME>"]
     if subpath:
@@ -275,8 +280,8 @@ def print_audit_packet(context_dir, scope, subpath):
     print("You are the auditor. Verify every candidate in the source (a regex hit is a "
           "candidate, not a bug), answer the checklist with evidence, then record ONE "
           "document. Say only what you verified: unverified items stay `not-verified`.\n")
-    print("Header the record will write (visual layer: " + uicheck.VISUAL_NOT_CONFIGURED + "):\n")
-    print("    " + uicheck.header_line(scanned, uicheck.VISUAL_NOT_CONFIGURED, {}) + "\n")
+    print(f"Header the record will write (visual layer: {visual_status}):\n")
+    print("    " + uicheck.header_line(scanned, visual_status, {}) + "\n")
     if scanned == 0:
         print("[!] 0 UI files scanned — a backend-only project, a wrong --path or an over-broad "
               "`exclude`. This is NOT a clean bill of health.\n")
@@ -292,6 +297,18 @@ def print_audit_packet(context_dir, scope, subpath):
               f"(.context/ui/dismissals.json).")
     print("\nWhat each rule means and how to dismiss a false positive: "
           "references/static-checks.md\n")
+
+    if visual or visual_status != uicheck.VISUAL_NOT_CONFIGURED:
+        print(f"## Visual candidates ({len(visual)}) — visual: {visual_status}\n")
+        for v in visual:
+            print("## Finding")
+            print(f"Rule: visual:{v['check']}")
+            print(f"Location: {uicheck.visual_location(v)}")
+            print(f"Evidence: {uicheck.visual_evidence(v)}")
+            print("Verdict: <confirmed | dismissed — <reason> | cannot verify — <why>>")
+            print(f"Severity: {v['severity'] or 'Medium'}\n")
+        if not visual:
+            print("- (none)\n")
 
     print("## Checklist (answer every item with evidence)\n")
     for item in uicheck.CHECKLIST_IDS:
@@ -366,8 +383,11 @@ def record_audit(context_dir, source, by, subpath=""):
         cards.set_meta(card, "ui_key", key)
         results.append((key, group, card.id, True))
 
-    # the skill runs no visual audit in this version: never claim one
-    header = uicheck.header_line(scanned, uicheck.VISUAL_NOT_CONFIGURED, answers, len(left))
+    # never re-run the command: `ran` only comes from the last packet run for this scope
+    visual_status, visual = uicheck.visual_status_for_record(
+        context_dir, load_profile(context_dir), subpath)
+    visual_left = uicheck.unaddressed_visual(findings, visual)
+    header = uicheck.header_line(scanned, visual_status, answers, len(left) + len(visual_left))
     dismissed = [f for f in findings if f.dismissed]
     unverified = [f for f in findings if not f.confirmed and not f.dismissed]
     lines = [header, "", f"# UI audit — {date.today().isoformat()}", "", "## Findings", ""]
@@ -383,6 +403,8 @@ def record_audit(context_dir, source, by, subpath=""):
     lines += [f"- {f.rule} at {f.location} — {f.verdict.strip()}" for f in unverified]
     lines += [f"- static candidate {c.rule} at {c.file}:{c.line} — not addressed: {c.snippet}"
               for c in left]
+    lines += [f"- visual candidate visual:{v['check']} at {uicheck.visual_location(v)} — "
+              f"not addressed: {uicheck.visual_evidence(v)}" for v in visual_left]
     lines += [f"- checklist:{k} — " + (answers[k][1] or "not verified")
               if k in answers else f"- checklist:{k} — not answered"
               for k in uicheck.CHECKLIST_IDS

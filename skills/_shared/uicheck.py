@@ -441,8 +441,8 @@ def _parse_checklist(text: str, errors: list) -> dict:
             errors.append(f"Checklist: '{item}' needs one of {', '.join(CHECKLIST_STATUSES)}")
             continue
         status, evidence = sm.group(1).lower(), sm.group(2).strip()
-        if status == "ok" and not evidence:  # no evidence, no `ok`
-            status, evidence = "not-verified", "ok without evidence"
+        if status in ("ok", "not-applicable") and not evidence:  # no evidence/reason, no answer
+            status, evidence = "not-verified", f"{status} without evidence"
         answers[item] = (status, evidence)
     return answers
 

@@ -276,3 +276,36 @@ def test_ok_without_evidence_counts_as_not_verified(ctx_env, python_cmd):
     _record(ctx_env, python_cmd, "## Checklist\n- width-360: ok\n- dark-mode: ok — checked\n")
     first = _report(ctx).splitlines()[0]
     assert "1/7 answered, 6 not-verified" in first
+
+
+def test_not_applicable_without_reason_counts_as_not_verified(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env)
+    _record(ctx_env, python_cmd,
+            "## Checklist\n- width-360: not-applicable\n- dark-mode: not-applicable — no dark theme\n")
+    assert "1/7 answered, 6 not-verified" in _report(ctx).splitlines()[0]
+
+
+def test_match_candidate_ambiguous_asks_for_line():
+    cands = [uicheck.Candidate("img-no-alt", "src/A.tsx", n, f"<img src={n}>", "High")
+             for n in (3, 9)]
+    f = uicheck.Finding("img-no-alt", "src/A.tsx", "no alt text", "confirmed", "High")
+    cand, err = uicheck.match_candidate(f, cands)
+    assert cand is None and "ambiguous — add :line (candidates:" in err
+    assert "src/A.tsx:3" in err and "src/A.tsx:9" in err
+    f = uicheck.Finding("img-no-alt", "src/A.tsx:42", "x", "confirmed", "High")
+    assert "matches no current candidate" in uicheck.match_candidate(f, cands)[1]
+
+
+def test_dismissal_in_same_second_as_start_is_ignored():
+    from datetime import datetime, timezone
+    at = "2026-11-19T10:00:00+00:00"
+    after = datetime.fromisoformat(at).astimezone(timezone.utc)
+    row = {"rule": "img-no-alt", "file": "src/A.tsx", "at": at}
+    assert uicheck._dismissed_after_start(row, "img-no-alt", "src/A.tsx", after) is True
+
+
+def test_save_visual_last_at_is_utc_with_offset(tmp_path):
+    from datetime import timedelta, datetime
+    uicheck.save_visual_last(tmp_path, "ran (1 viewports)", "", [])
+    at = json.loads((tmp_path / "ui" / "visual-last.json").read_text())["at"]
+    assert datetime.fromisoformat(at).utcoffset() == timedelta(0)

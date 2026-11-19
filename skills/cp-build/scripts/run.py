@@ -158,7 +158,10 @@ def finish(context_dir, card_id, source, project_root) -> None:
         fail(f"{card_id} has no parent story")
     text = read_document(source).strip()
     delivery = testcheck.parse_delivery(text)
-    verify = uicheck.ui_verified(context_dir, card)
+    verify, why = uicheck.ui_verify_status(context_dir, card)
+    if verify is not None and why:
+        print(f"cp-ui verify record not accepted: {why}")
+        verify = None
     problems = testcheck.check_delivery(delivery, card, story, Path(project_root),
                                         ui_verified=verify is not None)
     if problems:

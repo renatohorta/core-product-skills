@@ -381,7 +381,8 @@ def verify_bug(context_dir, bug_id, visual_opt_in, evidence):
                                       f"({card.meta.get('ui_verify_after')})")
     else:
         result, ev = uicheck.verify_static(context_dir, root, excludes_of(context_dir),
-                                           rule, file)
+                                           rule, file,
+                                           uicheck.parse_ts(card.meta.get("ui_verify_after", "")))
     rec = uicheck.write_verify_record(context_dir, bug_id, rule, result, ev)
     print(f"{bug_id} {rule}: {result.upper()} at {rec['at']} — {ev}")
     return 0 if result == "pass" else 1
@@ -417,7 +418,6 @@ def record_audit(context_dir, source, by, subpath=""):
         sys.exit(1)
     already = uicheck.load_dismissals(context_dir)
     left = uicheck.unaddressed(findings, cands, already)
-    uicheck.record_dismissals(context_dir, findings, (by or "").strip() or "agent", cands)
 
     groups = {}
     unmatched = []
@@ -440,6 +440,7 @@ def record_audit(context_dir, source, by, subpath=""):
         print("Fix the Location (path:line), or file what the scanner cannot see as "
               "`Rule: checklist:<id>`.")
         sys.exit(1)
+    uicheck.record_dismissals(context_dir, findings, (by or "").strip() or "agent", cands)
     open_bugs = uicheck.open_bugs_by_key(context_dir)
     results = []  # (key, group, card id, created?)
     for key, group in groups.items():

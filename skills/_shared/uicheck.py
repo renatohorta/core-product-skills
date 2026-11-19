@@ -538,7 +538,6 @@ def record_dismissals(context_dir, findings, actor, candidates=()) -> list:
     """Persist `dismissed` findings (validate first with check_dismissals). The fingerprint
     is the matching candidate's snippet, so the next packet hides exactly that candidate;
     non-static rules (checklist/visual) have no candidate and use their evidence."""
-    from datetime import datetime
     rows = _load_dismissal_rows(context_dir)
     seen = {r.get("key") for r in rows}
     added = []
@@ -554,7 +553,7 @@ def record_dismissals(context_dir, findings, actor, candidates=()) -> list:
         seen.add(key)
         row = {"key": key, "rule": f.rule.strip(), "file": file, "fingerprint": fp,
                "reason": f.reason, "by": actor or "agent",
-               "at": datetime.now().isoformat(timespec="seconds")}
+               "at": now_utc()}
         rows.append(row)
         added.append(row)
     if added:
@@ -822,20 +821,35 @@ def parse_ts(value):
     return dt if dt.tzinfo is not None and dt.utcoffset() is not None else None
 
 
-def ui_verified(context_dir, card):
-    """The verify record when it proves this cp-ui BUG's fix, else None: same bug, same
-    rule as the card's current ui_key, result pass, and strictly later than the start."""
+def ui_verify_status(context_dir, card):
+    """(record, None) when the record proves this cp-ui BUG's fix, else (record|None, why):
+    same bug, same rule as the card's current ui_key, result pass, strictly after the start."""
     if card.type != "bug" or card.meta.get("source") != SOURCE:
-        return None
+        return None, "not a cp-ui BUG"
     rule = str(card.meta.get("ui_key", "")).partition("::")[0]
     rec = verify_record(context_dir, card.id)
-    if not rule or not rec or rec.get("bug") != card.id or rec.get("rule") != rule \
-            or rec.get("result") != "pass":
-        return None
+    if rec is None:
+        return None, "no verify record"
+    if not rule:
+        return rec, "the card has no ui_key"
+    if rec.get("bug") != card.id:
+        return rec, f"the record is for {rec.get('bug')}, not {card.id}"
+    if rec.get("rule") != rule:
+        return rec, f"the record re-checked rule {rec.get('rule')}, the BUG's rule is {rule}"
+    if rec.get("result") != "pass":
+        return rec, f"the re-check result is {rec.get('result')}"
     after, at = parse_ts(card.meta.get("ui_verify_after", "")), parse_ts(rec.get("at", ""))
-    if after is None or at is None or not at > after:
-        return None
-    return rec
+    if after is None or at is None:
+        return rec, "unparsable or timezone-less time (ui_verify_after / record at)"
+    if not at > after:
+        return rec, f"the record ({rec.get('at')}) is not after the start ({card.meta.get('ui_verify_after')})"
+    return rec, None
+
+
+def ui_verified(context_dir, card):
+    """The verify record when it is valid for the card, else None."""
+    rec, why = ui_verify_status(context_dir, card)
+    return rec if why is None else None
 
 
 def write_verify_record(context_dir, bug_id, rule, result, evidence) -> dict:
@@ -847,7 +861,22 @@ def write_verify_record(context_dir, bug_id, rule, result, evidence) -> dict:
     return rec
 
 
-def verify_static(context_dir, project_root, exclude, rule, file):
+def _dismissed_after_start(row, rule, file, after) -> bool:
+    """A dismissal of this BUG's rule/file made after the fix started (or with a time we
+    cannot trust) must not hide the candidate from the re-check."""
+    if after is None or row.get("rule") != rule or file_of(str(row.get("file", ""))) != file:
+        return False
+    at = parse_ts(row.get("at", ""))
+    return at is None or at > after
+
+
+def dismissals_for(context_dir, rule, file) -> list:
+    """Stored dismissals of a (rule, file): for reviewers to read next to a re-check."""
+    return [r for r in _load_dismissal_rows(context_dir)
+            if r.get("rule") == rule and file_of(str(r.get("file", ""))) == file_of(file)]
+
+
+def verify_static(context_dir, project_root, exclude, rule, file, after=None):
     """(result, evidence): re-scan and look for non-dismissed candidates of rule in file."""
     from _shared import uikit
     ds = uikit.load_design_system(context_dir)
@@ -856,7 +885,8 @@ def verify_static(context_dir, project_root, exclude, rule, file):
     if why:
         return "fail", f"cannot re-check: {why}"
     cands, _ = scan(project_root, exclude, ds)
-    dismissed = load_dismissals(context_dir)
+    dismissed = {str(r.get("key", "")) for r in _load_dismissal_rows(context_dir)
+                 if not _dismissed_after_start(r, rule, want, after)}
     left = [c for c in cands if c.rule == rule and file_of(c.file) == want
             and candidate_key(c) not in dismissed]
     if not left:

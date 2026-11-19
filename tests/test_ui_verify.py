@@ -249,8 +249,6 @@ def _set_record(ctx, bug, rule, at, result="pass", bug_id=None):
 
 
 def test_start_writes_utc_offset_timestamp(ctx_env, python_cmd):
-    ctx, _, bug, _ = _doing(ctx_env, python_cmd)
-    cards.set_meta(cards.get(ctx, bug), "ui_verify_after", "x")  # overwritten by a fresh start? no: just parse check
     ctx2, _, bug2 = _bug(ctx_env)
     assert build(["--start", bug2], ctx_env, python_cmd).returncode == EXIT_OK
     after = datetime.fromisoformat(cards.get(ctx2, bug2).meta["ui_verify_after"])
@@ -315,3 +313,59 @@ def test_checklist_evidence_outside_root_or_old_is_rejected(ctx_env, python_cmd,
     old = (datetime.now(timezone.utc) - timedelta(days=2)).timestamp()
     os.utime(root / "old.png", (old, old))
     _verify_fail(ctx_env, python_cmd, ctx, bug, "older than", ["--evidence", "old.png"])
+
+
+# ─── fix round 2 ────────────────────────────────────────────────────────────
+
+def test_dismissal_after_start_does_not_pass_verify_and_review_lists_it(ctx_env, python_cmd):
+    ctx, root, bug, _ = _doing(ctx_env, python_cmd)
+    doc = ("## Finding\nRule: img-no-alt\nLocation: src/Home.tsx:1\n"
+           "Evidence: <img src=\"a.png\">\nVerdict: dismissed — decorative\nSeverity: Low\n")
+    r = ui(["--audit", "--record", "-", "--by", "sneaky"], ctx_env, python_cmd, stdin=doc)
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    r = ui(["--audit", "--verify", bug], ctx_env, python_cmd)
+    assert r.returncode == 1 and _record(ctx, bug)["result"] == "fail"
+    # a (forged) passing record still shows the dismissal to the reviewer
+    _set_record(ctx, bug, "img-no-alt", datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    (root / "src" / "Home.tsx").write_text(GOOD, encoding="utf-8")
+    assert build(["--finish", bug, "--delivery", "-"], ctx_env, python_cmd,
+                 stdin=DELIVERY).returncode == EXIT_OK
+    r = run_skill("cp-review", [bug], ctx_env, python_cmd)
+    assert "sneaky" in r.stdout and "decorative" in r.stdout
+
+
+def test_dismissal_before_start_still_counts(ctx_env, python_cmd):
+    ctx, root, bug = _bug(ctx_env)
+    doc = ("## Finding\nRule: img-no-alt\nLocation: src/Home.tsx:1\n"
+           "Evidence: <img src=\"a.png\">\nVerdict: dismissed — decorative\nSeverity: Low\n")
+    assert ui(["--audit", "--record", "-"], ctx_env, python_cmd, stdin=doc).returncode == EXIT_OK
+    assert build(["--start", bug], ctx_env, python_cmd).returncode == EXIT_OK
+    _backdate(ctx, bug, -3600)  # the fix "started" after the dismissal
+    assert ui(["--audit", "--verify", bug], ctx_env, python_cmd).returncode == EXIT_OK
+
+
+def test_rejected_record_writes_no_dismissals(ctx_env, python_cmd):
+    ctx = Path(ctx_env["RUP_CONTEXT_DIR"])
+    (ctx.parent / "src").mkdir(parents=True, exist_ok=True)
+    (ctx.parent / "src" / "Home.tsx").write_text(BAD, encoding="utf-8")
+    doc = ("## Finding\nRule: img-no-alt\nLocation: src/Home.tsx:1\nEvidence: <img src=\"a.png\">\n"
+           "Verdict: dismissed — decorative\nSeverity: Low\n\n"
+           "## Finding\nRule: tiny-font\nLocation: src/Home.tsx:1\nEvidence: x\n"
+           "Verdict: confirmed\nSeverity: High\n")
+    r = ui(["--audit", "--record", "-"], ctx_env, python_cmd, stdin=doc)
+    assert r.returncode == 1
+    assert not (ctx / "ui" / "dismissals.json").exists()
+
+
+def test_finish_explains_why_a_verify_record_is_rejected(ctx_env, python_cmd):
+    ctx, _, bug, _ = _doing(ctx_env, python_cmd)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    for rec_kw, needle in (({"rule": "tiny-font", "at": now}, "re-checked rule tiny-font"),
+                           ({"rule": "img-no-alt", "at": now, "result": "fail"}, "result is fail"),
+                           ({"rule": "img-no-alt", "at": now, "bug_id": "BUG-099"}, "BUG-099"),
+                           ({"rule": "img-no-alt", "at": "2000-01-01T00:00:00+00:00"}, "not after the start"),
+                           ({"rule": "img-no-alt", "at": "garbage"}, "unparsable")):
+        _set_record(ctx, bug, **rec_kw)
+        r = build(["--finish", bug, "--delivery", "-"], ctx_env, python_cmd, stdin=DELIVERY)
+        assert r.returncode == 1 and needle in r.stdout, (needle, r.stdout)
+        assert r.stdout.index(needle) < r.stdout.index("Delivery rejected")

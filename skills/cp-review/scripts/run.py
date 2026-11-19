@@ -90,6 +90,10 @@ def packet(context_dir, card_id, project_root) -> None:
     recheck = uicheck.ui_verified(context_dir, card)
     if recheck:
         print(f"Re-checked by cp-ui: {recheck['rule']} pass at {recheck['at']}")
+        key = str(card.meta.get("ui_key", ""))
+        for d in uicheck.dismissals_for(context_dir, *key.partition("::")[::2]):
+            print(f"Dismissal of this rule/file: by {d.get('by')} at {d.get('at')} — "
+                  f"{d.get('reason')}")
     else:
         print("Not covered by any delivery test: "
               + (", ".join(c for c in wanted if c not in got) or "none"))

@@ -681,3 +681,50 @@ SessionStart hook (our install + pointer note covers it, and a bash hook per
 harness is a maintenance cost we are not paying), the "your human partner" voice,
 and the 15 process skills that would duplicate `cp-discover`, `cp-backlog`,
 `cp-build` and `cp-review`.
+
+
+---
+
+## ADR-0020 — cp-operation-pentest: the operation family begins with a white-box code security audit
+
+**Date**: 2026-11-19 · **Status**: Accepted
+
+**Context**: The cp-* skills stop at delivery (Inception→Transition). The product needs
+a factory that continues into operation/sustainment (monitoring, maintenance, infra,
+security). Separately, the sibling `Claude-BugHunter` repo (Sachin Sharma, MIT + CC-BY-4.0)
+holds strong vulnerability-detection knowledge (58 `hunt-*` skills, the 7-Question Gate,
+evidence hygiene, a coverage-closure engine). Only its closure gate had been mined so far
+(ADR-0018). The team's security need is defensive and white-box: find holes in our *own*
+polyglot code, not attack third parties.
+
+**Decision**: Start a `cp-operation-*` family; its first member is `cp-operation-pentest`,
+v1 = source-code security audit, mirroring `cp-test --audit`:
+
+- `run.py` prints a work packet (vulnerability classes + `references/` + the discovered
+  source surface + the assessment format); the agent (the LLM) audits the source and writes
+  one assessment document; `--record` validates it, opens one `BUG-NNN` per confirmed finding
+  (deduped; a "cannot verify"/killed verdict opens none), and closes the coverage ledger.
+- Coverage is tracked per `(module × vulnerability-class)` pair, cumulative across `--record`
+  runs; the gate exits 1 while any pair is never audited and not waived
+  (`.context/operation/pentest/closure.md`). `--waive PATH|GLOB --reason "…"` is the reasoned
+  escape hatch. Modelled on BugHunter's `engine/closure.py` (host × class), like ADR-0018.
+- "Audited" comes from the agent's declared `## Coverage` (there are no mutants), cross-checked
+  against the walked surface. Same trust model as the rest of cp-*.
+- The surface is polyglot: `cp-operation-pentest/profile.json` declares `source_extensions`
+  (`.py .js .ts .tsx .java .kt` …) so the gate sees the whole codebase, not just `.py`.
+- The 11 class `references/*.md`, `triage.md` (7-Question Gate) and `evidence.md` are condensed
+  from and credited to Claude-BugHunter in `NOTICE` (no verbatim redistribution).
+- `cp-orchestrator` routes to it via a `pentest` route + a security chain in `_shared/router.py`;
+  the family is registered for routing so future members (`cp-operation-monitor`, …) slot in.
+- Confirmed findings become BUG cards (kanban, phase-independent), so the **5th "Operation"
+  lifecycle phase is deferred** until an operation skill needs a phase-doc artifact.
+- No label field added to `cards.py` in v1: security metadata goes in the BUG body + a
+  `[security]` title prefix.
+
+Not in v1 (deferred): the `--infra URL` mode (running-service/DAST audit, reusing BugHunter's
+`scope.py`); the rest of the BugHunter engine (`agent.py`/`engine.py`) stays out — it dispatches
+models (ADR-0012 forbids it).
+
+**Consequences**: Security review becomes a routed, defensive, white-box step that feeds the
+existing pipeline instead of a side report. A clean finding list can no longer hide unaudited
+code. The operation family has a pattern the next members follow. Pure stdlib, `python -S`.

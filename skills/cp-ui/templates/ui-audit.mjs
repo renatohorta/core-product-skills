@@ -150,10 +150,14 @@ async function autoScroll(page) {
     await new Promise((res) => {
       let y = 0;
       const step = Math.max(200, Math.floor(window.innerHeight * 0.8));
+      let steps = 0;
+      const started = Date.now();
       const timer = setInterval(() => {
         window.scrollBy(0, step);
         y += step;
-        if (y >= document.body.scrollHeight) { clearInterval(timer); res(); }
+        steps += 1;
+        // cap: ~50 steps or ~10 s, so an infinite-scroll page cannot hang the audit
+        if (y >= document.body.scrollHeight || steps >= 50 || Date.now() - started > 10000) { clearInterval(timer); res(); }
       }, 80);
     });
     window.scrollTo(0, 0);
@@ -179,34 +183,48 @@ async function main() {
   const browser = await launchBrowser(args.executable);
   const out = [];
 
-  for (const vp of VIEWPORTS) {
-    const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1 });
-    const page = await ctx.newPage();
-    const consoleErrors = [];
-    page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
-    page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
-    await page.goto(args.url, { waitUntil: 'networkidle', timeout: 30000 }).catch(() => page.goto(args.url, { waitUntil: 'load', timeout: 30000 }));
-    await page.waitForTimeout(400);
-    await autoScroll(page);
-    const shot = `${args.out}/screenshots/${vp.name}.png`;
-    await page.screenshot({ path: `${outDir}/screenshots/${vp.name}.png`, fullPage: true });
-    const findings = await page.evaluate(inPageChecks);
-    for (const f of findings) {
-      out.push({
-        check: f.check,
-        severity: f.severity,
-        viewport: vp.name,
-        selector: f.detail || 'html',
-        detail: f.message,
-        screenshot: shot,
-      });
+  try {
+    for (const vp of VIEWPORTS) {
+      const ctx = await browser.newContext({ viewport: { width: vp.width, height: vp.height }, deviceScaleFactor: 1 });
+      const page = await ctx.newPage();
+      const consoleErrors = [];
+      page.on('console', (m) => { if (m.type() === 'error') consoleErrors.push(m.text()); });
+      page.on('pageerror', (e) => consoleErrors.push(`pageerror: ${e.message}`));
+      let response;
+      try {
+        response = await page.goto(args.url, { waitUntil: 'networkidle', timeout: 30000 })
+          .catch(() => page.goto(args.url, { waitUntil: 'load', timeout: 30000 }));
+      } catch (e) {
+        console.error(`cannot load ${args.url}: ${e.message.split('\n')[0]} — is the app running?`);
+        process.exit(1);
+      }
+      if (!response || !response.ok()) {
+        console.error(`cannot load ${args.url}: ${response ? 'HTTP ' + response.status() : 'no response'} — is the app running?`);
+        process.exit(1);
+      }
+      await page.waitForTimeout(400);
+      await autoScroll(page);
+      const shot = `${args.out}/screenshots/${vp.name}.png`;
+      await page.screenshot({ path: `${outDir}/screenshots/${vp.name}.png`, fullPage: true });
+      const findings = await page.evaluate(inPageChecks);
+      for (const f of findings) {
+        out.push({
+          check: f.check,
+          severity: f.severity,
+          viewport: vp.name,
+          selector: f.detail || 'html',
+          detail: f.message,
+          screenshot: shot,
+        });
+      }
+      for (const e of consoleErrors.slice(0, 5)) {
+        out.push({ check: 'console-error', severity: 'medium', viewport: vp.name, selector: 'console', detail: e, screenshot: shot });
+      }
+      await ctx.close();
     }
-    for (const e of consoleErrors.slice(0, 5)) {
-      out.push({ check: 'console-error', severity: 'medium', viewport: vp.name, selector: 'console', detail: e, screenshot: shot });
-    }
-    await ctx.close();
+  } finally {
+    await browser.close();
   }
-  await browser.close();
 
   const report = { viewports: VIEWPORTS.map((v) => v.name), findings: out };
   await writeFile(`${outDir}/report.json`, JSON.stringify(report, null, 2), 'utf8');

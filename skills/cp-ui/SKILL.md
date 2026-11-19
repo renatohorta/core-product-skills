@@ -47,7 +47,7 @@ Exit codes: 0 ok · 1 usage / invalid document / `--chosen-by` mismatch / overwr
 Static UI check of the code, plus a checklist the agent verifies. The packet needs the
 project to be authorized (exit 5 otherwise).
 
-1. **Packet** (read-only): `python scripts/run.py --audit ["<scope>"] [--path SUB]`. It shows
+1. **Packet**: `python scripts/run.py --audit ["<scope>"] [--path SUB] [--visual]`. It writes only `.context/ui/visual-last.json`; the visual command runs only with `--visual`. It shows
    the honest header (static files scanned, the visual status, checklist counts),
    the regex candidates (minus those dismissed earlier, with how many were hidden), the seven
    checklist items and the document format. `0 files` means nothing was scanned, not "clean".
@@ -80,12 +80,12 @@ Off by default (`visual: not configured`). To enable it in your product:
    `{"visual_audit": {"command": "node scripts/ui-audit.mjs --url http://localhost:5173 --out .ui-audit", "report": ".ui-audit/report.json", "timeout_s": 120}}`
    (`report` is relative to the project root; `timeout_s` defaults to 120).
 
-The packet runs the command once (deleting any old report first) and lists each finding as a
+Opt-in: only `--audit --visual` runs the declared command (the packet prints the exact command and cwd first; it never starts servers). Without `--visual` the status is `skipped (--visual not given)` when `visual_audit` is configured (`not configured` otherwise) and that is stored too, invalidating any older run. The report path must stay inside the project (`failed (report path outside project)`). With `--visual` the packet runs the command once (deleting any old report first) and lists each finding as a
 candidate (`Rule: visual:<check>`, `Location: <viewport> <selector>`, evidence with the
 screenshot path); the run is saved to `.context/ui/visual-last.json`. The record never
 re-runs the command: its header reads that file when its scope (`--path`) matches the packet's.
-Header: `visual: ran (k viewports)` (only from that file) · `visual: not configured` (no
-`visual_audit`/`command`) · `visual: failed (<reason>)` — `timeout after 120s`, `exit code 2`,
+Header (the report's second line is `Visual run at: <time>`): `visual: ran (k viewports)` (only from that file) · `visual: not configured` (no
+`visual_audit`/`command`) · `visual: failed (<reason>)` — `timeout after 120s`, `exit code 2: <last stderr line>`, `visual run not persisted`,
 `report not found: <path>`, `invalid report: <detail>`, `command not found: <name>`, or
 `no visual run for this scope — run the packet first`. A confirmed `visual:` finding opens a
 BUG like any other, grouped by rule and viewport (`visual:<check>::<viewport>`); visual

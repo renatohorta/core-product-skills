@@ -1,5 +1,8 @@
 """cp-ui optional visual audit: run_visual, packet candidates, record header, template."""
 import json
+import shutil
+import subprocess
+import pytest
 from pathlib import Path
 
 from conftest import EXIT_OK, SKILLS_DIR
@@ -92,7 +95,7 @@ def _finding(verdict="confirmed"):
 
 def test_packet_lists_visual_candidates_and_persists(ctx_env, python_cmd):
     ctx, _ = _project(ctx_env, python_cmd)
-    r = ui(["--audit"], ctx_env, python_cmd)
+    r = ui(["--audit", "--visual"], ctx_env, python_cmd)
     assert r.returncode == EXIT_OK, r.stdout + r.stderr
     assert "visual: ran (2 viewports)" in r.stdout
     assert "Rule: visual:horizontal-overflow" in r.stdout
@@ -105,7 +108,7 @@ def test_packet_lists_visual_candidates_and_persists(ctx_env, python_cmd):
 
 def test_record_uses_last_run_and_opens_bug_per_viewport(ctx_env, python_cmd):
     ctx, _ = _project(ctx_env, python_cmd)
-    ui(["--audit"], ctx_env, python_cmd)
+    ui(["--audit", "--visual"], ctx_env, python_cmd)
     r = ui(["--audit", "--record", "-"], ctx_env, python_cmd, stdin=_finding())
     assert r.returncode == EXIT_OK, r.stdout + r.stderr
     assert "visual: ran (2 viewports)" in r.stdout
@@ -115,7 +118,7 @@ def test_record_uses_last_run_and_opens_bug_per_viewport(ctx_env, python_cmd):
 
 def test_record_lists_unaddressed_visual_and_does_not_rerun(ctx_env, python_cmd):
     ctx, root = _project(ctx_env, python_cmd)
-    ui(["--audit"], ctx_env, python_cmd)
+    ui(["--audit", "--visual"], ctx_env, python_cmd)
     (root / "ok.py").write_text("raise SystemExit(9)\n")  # a re-run would now fail
     doc = "## Checklist\n- dark-mode: not-verified — x\n"
     r = ui(["--audit", "--record", "-"], ctx_env, python_cmd, stdin=doc)
@@ -129,7 +132,7 @@ def test_record_without_run_never_claims_ran(ctx_env, python_cmd):
     ctx, _ = _project(ctx_env, python_cmd)
     r = ui(["--audit", "--record", "-"], ctx_env, python_cmd, stdin=_finding("cannot verify — x"))
     assert "visual: failed (no visual run for this scope — run the packet first)" in r.stdout
-    ui(["--audit"], ctx_env, python_cmd)  # scope "" now stored
+    ui(["--audit", "--visual"], ctx_env, python_cmd)  # scope "" now stored
     r = ui(["--audit", "--record", "-", "--path", "src"], ctx_env, python_cmd,
            stdin=_finding("cannot verify — x"))
     assert "failed (no visual run for this scope" in r.stdout
@@ -152,3 +155,129 @@ def test_template_ui_audit_mjs():
                 "detail", "screenshot", "report.json"):
         assert key in text
     assert "MIT" in text and "NextLevelBuilder" in text and "playwright install chromium" in text
+
+
+def test_packet_without_visual_does_not_run_and_says_skipped(ctx_env, python_cmd):
+    ctx, root = _project(ctx_env, python_cmd, command="marker.py")
+    _script(root, "marker.py", "import pathlib\npathlib.Path('ran.marker').write_text('x')\n")
+    r = ui(["--audit"], ctx_env, python_cmd)
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    assert not (root / "ran.marker").exists()
+    assert "visual: skipped (--visual not given)" in r.stdout
+    last = json.loads((ctx / "ui" / "visual-last.json").read_text())
+    assert last["status"] == "skipped (--visual not given)"
+
+
+def test_skipped_packet_invalidates_older_ran(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env, python_cmd)
+    ui(["--audit", "--visual"], ctx_env, python_cmd)
+    ui(["--audit"], ctx_env, python_cmd)
+    r = ui(["--audit", "--record", "-"], ctx_env, python_cmd,
+           stdin="## Checklist\n- dark-mode: not-verified — x\n")
+    assert "visual: skipped (--visual not given)" in r.stdout and "visual: ran" not in r.stdout
+
+
+def test_packet_without_visual_and_no_profile_not_configured(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env, python_cmd)
+    (ctx / "ui" / "profile.json").write_text("{}")
+    r = ui(["--audit"], ctx_env, python_cmd)
+    assert "visual: not configured" in r.stdout
+
+
+def test_packet_visual_prints_command_and_cwd(ctx_env, python_cmd):
+    ctx, root = _project(ctx_env, python_cmd)
+    r = ui(["--audit", "--visual"], ctx_env, python_cmd)
+    assert "ok.py" in r.stdout.split("Running visual audit")[1].split("\n")[0:3].__str__()
+    assert str(root) in r.stdout
+
+
+def test_record_prints_visual_run_at(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env, python_cmd)
+    ui(["--audit", "--visual"], ctx_env, python_cmd)
+    at = json.loads((ctx / "ui" / "visual-last.json").read_text())["at"]
+    ui(["--audit", "--record", "-"], ctx_env, python_cmd,
+       stdin="## Checklist\n- dark-mode: not-verified — x\n")
+    lines = sorted((ctx / "ui" / "audits").glob("*.md"))[-1].read_text().splitlines()
+    assert lines[1] == f"Visual run at: {at}"
+
+
+def _load_run():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("cpui_run", SKILLS_DIR / "cp-ui" / "scripts" / "run.py")
+    mod = importlib.util.module_from_spec(spec)
+    import sys
+    sys.path.insert(0, str(SKILLS_DIR))
+    sys.path.insert(0, str(SKILLS_DIR / "cp-ui" / "scripts"))
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_persist_failure_never_leaves_older_ran(ctx_env, python_cmd, monkeypatch, capsys):
+    ctx, root = _project(ctx_env, python_cmd)
+    ui(["--audit", "--visual"], ctx_env, python_cmd)  # pre-existing "ran"
+    assert json.loads((ctx / "ui" / "visual-last.json").read_text())["status"].startswith("ran")
+    real = Path.write_text
+    state = {"n": 0}
+
+    def flaky(self, *a, **k):
+        if self.name == "visual-last.json":
+            state["n"] += 1
+            if state["n"] == 1:
+                raise OSError("disk full")
+        return real(self, *a, **k)
+    monkeypatch.setattr(Path, "write_text", flaky)
+    uicheck.save_visual_last(ctx, "ran (2 viewports)", "", [])
+    assert "visual run not persisted" in capsys.readouterr().err
+    status, _ = uicheck.visual_status_for_record(ctx, {"visual_audit": {}}, "")
+    assert status == "failed (visual run not persisted)"
+
+
+def test_persist_total_failure_removes_old_file(ctx_env, python_cmd, monkeypatch, capsys):
+    ctx, _ = _project(ctx_env, python_cmd)
+    ui(["--audit", "--visual"], ctx_env, python_cmd)
+    real = Path.write_text
+    monkeypatch.setattr(Path, "write_text", lambda self, *a, **k: (_ for _ in ()).throw(OSError("ro"))
+                        if self.name == "visual-last.json" else real(self, *a, **k))
+    uicheck.save_visual_last(ctx, "ran (2 viewports)", "", [])
+    assert "not persisted" in capsys.readouterr().err
+    status, _ = uicheck.visual_status_for_record(ctx, {"visual_audit": {}}, "")
+    assert not status.startswith("ran")
+
+
+def test_stale_other_scope_not_ran(ctx_env, python_cmd):
+    ctx, _ = _project(ctx_env, python_cmd)
+    uicheck.save_visual_last(ctx, "ran (2 viewports)", "other", [])
+    status, _ = uicheck.visual_status_for_record(ctx, {"visual_audit": {"command": "x"}}, "")
+    assert not status.startswith("ran")
+
+
+def test_report_path_outside_project_fails_and_is_not_unlinked(tmp_path, python_cmd):
+    root = tmp_path / "proj"
+    root.mkdir()
+    victim = tmp_path / "x.json"
+    victim.write_text("keep")
+    _script(root, "ok.py", "pass\n")
+    prof = {"visual_audit": {"command": f'"{python_cmd}" ok.py', "report": "../x.json"}}
+    assert uicheck.run_visual(root, prof) == ("failed (report path outside project)", [])
+    assert victim.read_text() == "keep"
+
+
+def test_exit_code_failure_includes_stderr_tail(tmp_path, python_cmd):
+    _script(tmp_path, "bad.py", "import sys\nprint('x', file=sys.stderr)\n"
+            "print('Error: net::ERR_CONNECTION_REFUSED', file=sys.stderr)\nsys.exit(1)\n")
+    status, _ = uicheck.run_visual(tmp_path, _profile(python_cmd, "bad.py"))
+    assert status == "failed (exit code 1: Error: net::ERR_CONNECTION_REFUSED)"
+    _script(tmp_path, "long.py", "import sys\nprint('y'*500, file=sys.stderr)\nsys.exit(3)\n")
+    status, _ = uicheck.run_visual(tmp_path, _profile(python_cmd, "long.py"))
+    assert len(status) < 160 and status.startswith("failed (exit code 3: yyy")
+
+
+def test_template_hardening_and_node_check():
+    path = SKILLS_DIR / "cp-ui" / "templates" / "ui-audit.mjs"
+    text = path.read_text(encoding="utf-8")
+    assert "finally" in text and "is the app running?" in text and "response.ok()" in text.replace("resp.ok()", "response.ok()")
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not installed")
+    r = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr

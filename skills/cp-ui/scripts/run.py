@@ -11,8 +11,8 @@ It never calls a model (ADR-0012): the agent running it is the LLM.
         [--force --reason R]
         validate the chosen document, write design-system/MASTER.md (or
         pages/<PAGE>.md) + tokens.json, log the decision
-  run.py --audit ["<scope>"] [--path SUB]
-        print the read-only audit packet: static candidates, checklist, document format
+  run.py --audit ["<scope>"] [--path SUB] [--visual]
+        print the audit packet (--visual runs the profile's visual command): static candidates, checklist, document format
   run.py --audit --record FILE|- [--by NAME]
         validate the audit document, open one BUG per (rule, file) group of confirmed
         findings, store dismissals, write .context/ui/audits/<date>.md
@@ -255,7 +255,7 @@ def _scan(context_dir, subpath=""):
     return uicheck.scan(project_root(context_dir), excludes_of(context_dir), ds, subpath)
 
 
-def print_audit_packet(context_dir, scope, subpath):
+def print_audit_packet(context_dir, scope, subpath, visual_opt_in=False):
     context.require_consent(context_dir)
     cands, scanned = _scan(context_dir, subpath)
     dismissed = uicheck.load_dismissals(context_dir)
@@ -265,11 +265,17 @@ def print_audit_packet(context_dir, scope, subpath):
         items = uicheck.parse_checklist_doc(CHECKLIST_REF.read_text(encoding="utf-8"))
     except OSError:
         items = {}
-    visual_status, visual = uicheck.run_visual(project_root(context_dir), load_profile(context_dir))
-    try:
-        uicheck.save_visual_last(context_dir, visual_status, subpath, visual)
-    except OSError:
-        pass  # a read-only .context/: the record then reports no visual run for this scope
+    profile = load_profile(context_dir)
+    visual = []
+    cmd_cwd = uicheck.visual_command_line(project_root(context_dir), profile)
+    if cmd_cwd is None:
+        visual_status = uicheck.VISUAL_NOT_CONFIGURED
+    elif not visual_opt_in:
+        visual_status = "skipped (--visual not given)"
+    else:
+        print(f"Running visual audit (--visual): {cmd_cwd[0]}\n  cwd: {cmd_cwd[1]}\n", flush=True)
+        visual_status, visual = uicheck.run_visual(project_root(context_dir), profile)
+    uicheck.save_visual_last(context_dir, visual_status, subpath, visual)
     me = Path(__file__).resolve()
     record_args = [sys.executable, me, "--audit", "--record", "FILE|-", "--by", "<NAME>"]
     if subpath:
@@ -390,7 +396,9 @@ def record_audit(context_dir, source, by, subpath=""):
     header = uicheck.header_line(scanned, visual_status, answers, len(left) + len(visual_left))
     dismissed = [f for f in findings if f.dismissed]
     unverified = [f for f in findings if not f.confirmed and not f.dismissed]
-    lines = [header, "", f"# UI audit — {date.today().isoformat()}", "", "## Findings", ""]
+    last = uicheck.load_visual_last(context_dir)
+    at = last.get("at") if last and (last.get("scope") or "") == (subpath or "") else None
+    lines = [header, f"Visual run at: {at or 'n/a'}", "", f"# UI audit — {date.today().isoformat()}", "", "## Findings", ""]
     for key, group, cid, created in results:
         lines.append(f"- {key} — " + (f"{cid} (opened)" if created else f"already open: {cid}"))
         lines += [f"  - {uicheck.occurrence(f)} [{f.severity.strip()}]" for f in group]
@@ -445,6 +453,8 @@ def main(argv=None) -> int:
     p.add_argument("--reason", help="why the existing file is replaced")
     p.add_argument("--out", help="directory for the HTML previews (default: a temp dir)")
     p.add_argument("--audit", action="store_true", help="UI audit packet / record")
+    p.add_argument("--visual", action="store_true",
+                   help="--audit: run the profile's visual_audit command (opt-in; never starts servers)")
     p.add_argument("--path", help="--audit [--record]: narrow the scan to a subtree")
     p.add_argument("--by", help="--audit --record: who dismissed (default: agent)")
     p.add_argument("--context-dir", help="target .context/ (default: auto-detect)")
@@ -457,7 +467,7 @@ def main(argv=None) -> int:
         if args.record:
             record_audit(context_dir, args.record, args.by, args.path)
         else:
-            print_audit_packet(context_dir, args.briefing, args.path)
+            print_audit_packet(context_dir, args.briefing, args.path, args.visual)
         return EXIT_OK
     if not args.design_system:
         fail("choose a mode: --design-system or --audit")

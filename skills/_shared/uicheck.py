@@ -17,6 +17,7 @@ import os
 import re
 import shlex
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -602,6 +603,19 @@ def _failed(reason: str):
     return f"failed ({reason})", []
 
 
+def _stderr_tail(raw) -> str:
+    lines = [ln.strip() for ln in (raw or b"").decode("utf-8", "replace").splitlines() if ln.strip()]
+    return lines[-1][:120] if lines else ""
+
+
+def visual_command_line(project_root, profile):
+    """(command, cwd) the visual layer would run, or None when not configured."""
+    cfg = (profile or {}).get("visual_audit")
+    if not isinstance(cfg, dict) or not str(cfg.get("command") or "").strip():
+        return None
+    return str(cfg["command"]).strip(), str(Path(project_root))
+
+
 def run_visual(project_root, profile: dict):
     """Run the product's own visual-audit command -> (status, findings). Never raises and
     never starts or stops a server (the command is the product's)."""
@@ -609,7 +623,11 @@ def run_visual(project_root, profile: dict):
     if not isinstance(cfg, dict) or not str(cfg.get("command") or "").strip():
         return VISUAL_NOT_CONFIGURED, []
     root = Path(project_root)
-    report = root / str(cfg.get("report") or ".ui-audit/report.json")
+    report = (root / str(cfg.get("report") or ".ui-audit/report.json")).resolve()
+    try:
+        report.relative_to(root.resolve())
+    except ValueError:
+        return _failed("report path outside project")
     timeout_s = cfg.get("timeout_s", VISUAL_DEFAULT_TIMEOUT)
     if isinstance(timeout_s, bool) or not isinstance(timeout_s, (int, float)) or timeout_s <= 0:
         timeout_s = VISUAL_DEFAULT_TIMEOUT
@@ -634,7 +652,8 @@ def run_visual(project_root, profile: dict):
     except OSError as e:
         return _failed(f"cannot run {argv[0]}: {e}")
     if proc.returncode != 0:
-        return _failed(f"exit code {proc.returncode}")
+        tail = _stderr_tail(proc.stderr)
+        return _failed(f"exit code {proc.returncode}" + (f": {tail}" if tail else ""))
     try:
         data = json.loads(report.read_text(encoding="utf-8"))
     except FileNotFoundError:
@@ -661,14 +680,32 @@ def visual_evidence(v: dict) -> str:
     return f"{v['detail']}{shot}"
 
 
-def save_visual_last(context_dir, status, scope, findings):
+def save_visual_last(context_dir, status, scope, findings) -> bool:
+    """Persist the run. On failure: try a minimal `not persisted` marker, else unlink the old
+    file, warn on stderr — never leave an older `ran` behind. Returns True if persisted."""
     from datetime import datetime
     path = visual_last_path(context_dir)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"status": status,
-                                "at": datetime.now().isoformat(timespec="seconds"),
-                                "scope": scope or "", "findings": findings},
-                               indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    at = datetime.now().isoformat(timespec="seconds")
+
+    def _write(st, fs):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({"status": st, "at": at, "scope": scope or "",
+                                    "findings": fs}, indent=2, ensure_ascii=False) + "\n",
+                        encoding="utf-8")
+    try:
+        _write(status, findings)
+        return True
+    except OSError as e:
+        print(f"warning: visual run not persisted ({path}: {e}) — the record will not claim a visual run",
+              file=sys.stderr)
+    try:
+        _write("failed (visual run not persisted)", [])
+    except OSError:
+        try:
+            path.unlink()
+        except OSError:
+            pass
+    return False
 
 
 def load_visual_last(context_dir):

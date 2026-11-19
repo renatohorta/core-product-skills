@@ -32,6 +32,7 @@ step**, every route with its exact command, and the standard chains:
 | Bug | `cp-debug --open` → failing test → `--diagnose` → `cp-build` → `cp-review` |
 | Small clear change | `cp-backlog --new task` → `cp-build` → `cp-review` |
 | "Are the tests any good?" | `cp-test --audit` → cards for the real gaps → `cp-build` |
+| Product with a UI | `cp-discover` → `cp-ui --design-system` *(operator picks a direction)* → requirements → backlog → `cp-build` (UI section) → `cp-ui --audit` → one BUG per confirmed finding → debug/build → `cp-ui --audit --verify` → `cp-review` |
 | "What now?" / "continue" | the suggested next step |
 
 Rules: say in one line what you will do, run the command, follow its packet, and

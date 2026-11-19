@@ -172,3 +172,14 @@ def test_pointer_note_leaves_a_broken_block_alone(tmp_path):
     (tmp_path / "CLAUDE.md").write_text(broken, encoding="utf-8")
     consent.ensure_pointer_note(tmp_path)
     assert (tmp_path / "CLAUDE.md").read_text(encoding="utf-8") == broken
+
+
+def test_router_routes_ui_requests():
+    cmd = lambda skill, *a: " ".join((skill,) + a)  # noqa: E731
+    rows = {r[0]: r for r in router.routes(cmd)}
+    assert "cp-ui" in rows["ui-design"][3] and "--design-system" in rows["ui-design"][3]
+    assert rows["ui-audit"][3].startswith("cp-ui") and "--audit" in rows["ui-audit"][3]
+    keys = [r[0] for r in router.routes(cmd)]
+    assert keys.index("ui-design") == keys.index("pentest") + 1
+    assert any(n == "Product with a UI" and "cp-ui --audit --verify" in s
+               for n, s in router.CHAINS)

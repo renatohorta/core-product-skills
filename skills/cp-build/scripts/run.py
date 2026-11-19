@@ -20,7 +20,7 @@ for _root in (_SKILL_DIR.parent, _SKILL_DIR.parent.parent):
             sys.path.insert(0, str(_root))
         break
 
-from _shared import cards, context, roadmap, testcheck, uicheck  # noqa: E402
+from _shared import cards, context, roadmap, testcheck, uicheck, uikit  # noqa: E402
 from _shared.discipline import cmdline, fail, prior_artifacts, read_document  # noqa: E402
 from _shared.rup import EXIT_OK, setup_console  # noqa: E402
 
@@ -131,6 +131,8 @@ def start(context_dir, card_id) -> None:
         print("## UI BUG\n")
         print(f"This is a UI BUG: prove the fix with `cp-ui --audit --verify {card.id}` "
               f"(add --visual / --evidence as needed); a regression test is optional.\n")
+    if uikit.touches_ui(card):
+        print("\n".join(uikit.ui_section_lines(context_dir)))
     print("## TDD rules\n")
     targets = [l.strip().lstrip("-* ").strip("`") for l in
                cards.section_text(card, "Target files").splitlines() if l.strip()]

@@ -24,7 +24,7 @@ for _root in (_SKILL_DIR.parent, _SKILL_DIR.parent.parent):
             sys.path.insert(0, str(_root))
         break
 
-from _shared import cards, context, testcheck, uicheck  # noqa: E402
+from _shared import cards, context, testcheck, uicheck, uikit  # noqa: E402
 from _shared.discipline import cmdline, fail, missing_artifacts, read_document  # noqa: E402
 from _shared.rup import EXIT_OK, setup_console  # noqa: E402
 
@@ -97,6 +97,19 @@ def packet(context_dir, card_id, project_root) -> None:
     else:
         print("Not covered by any delivery test: "
               + (", ".join(c for c in wanted if c not in got) or "none"))
+
+    if uikit.touches_ui(card):
+        audits = sorted((Path(context_dir) / "ui" / "audits").glob("*.md"),
+                        key=lambda p: p.name)
+        head = "none yet"
+        if audits:
+            try:
+                head = (audits[-1].read_text(encoding="utf-8").splitlines() or [""])[0] or head
+            except (OSError, UnicodeDecodeError):
+                pass
+        print("\n## UI audit\n")
+        print("This card touches the UI: run `cp-ui --audit` and weigh its findings.")
+        print(f"Latest audit: {head}")
 
     print("\n## 2. Files\n")
     changed = bullets(delivery.section("Files changed"))

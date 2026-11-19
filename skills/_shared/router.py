@@ -145,6 +145,12 @@ def routes(cmd):
          "White-box security audit: find vuln classes, open a BUG per confirmed finding "
          "(cp-operation-* family)",
          cmd("cp-operation-pentest", "<request>")),
+        ("ui-design", "wants a look, visual identity, design system, palette, fonts",
+         "Propose 2\u20133 directions with previews; the operator picks; record the design system",
+         cmd("cp-ui", "--design-system", "<request>")),
+        ("ui-audit", "wants the UI checked: accessibility, responsive, UI bugs",
+         "Static checks + optional visual audit + evidence checklist; one BUG per confirmed finding",
+         cmd("cp-ui", "--audit")),
         ("status", "asks where the project is, what is pending, what to do next",
          "Recorded artifacts + board",
          cmd(ORCHESTRATOR_SKILL, "--status", "--phase", "<phase>") + "` · `"
@@ -168,6 +174,10 @@ CHAINS = [
     ("Security audit of our own code",
      "pentest → [agent audits the source, confirms via the 7-Question Gate] → "
      "pentest --record → one BUG per confirmed finding → debug/build each → review"),
+    ("Product with a UI",
+     "discover \u2192 ui-design [operator picks a direction] \u2192 requirements \u2192 backlog "
+     "\u2192 build (UI section) \u2192 ui-audit \u2192 one BUG per confirmed finding "
+     "\u2192 debug/build \u2192 verify (cp-ui --audit --verify) \u2192 review"),
 ]
 
 GATES = [

@@ -6,6 +6,8 @@ Standard library only. MASTER.md is written by the agent (`## Style`, `## Colors
 import re
 from pathlib import Path
 
+from _shared import cards, uicheck
+
 ROLES = ("primary", "on_primary", "secondary", "on_secondary", "accent", "on_accent",
          "background", "foreground", "card", "card_foreground", "muted",
          "muted_foreground", "border", "destructive", "on_destructive", "ring")
@@ -128,3 +130,50 @@ def load_design_system(context_dir):
     except (OSError, UnicodeDecodeError):
         text = ""  # unreadable (e.g. non-UTF-8): parsed as an empty, hence invalid, doc
     return parse_master(text)[0]
+
+
+_UI_WORDS = re.compile(r"\b(?:ui|screen|page|tela|component|layout|css)\b", re.IGNORECASE)
+
+UI_RULES = (
+    "Accessibility: text contrast \u2265 4.5:1, visible focus, labels/alt for every control "
+    "and image, full keyboard path.",
+    "Touch: targets \u2265 44\u00d744 px with \u2265 8 px spacing; loading feedback on every "
+    "async action.",
+    "Performance: reserve space for media (no layout shift), lazy-load below the fold, "
+    "no animation of width/height.",
+)
+
+
+def touches_ui(card) -> bool:
+    """True for a card that changes the UI: cp-ui source, a UI file in Target files, or a UI word."""
+    if card.meta.get("source") == "cp-ui":
+        return True
+    for line in cards.section_text(card, "Target files").splitlines():
+        if line.strip().lstrip("-* ").strip("`").lower().endswith(uicheck.UI_EXTENSIONS):
+            return True
+    return bool(_UI_WORDS.search(f"{card.title}\n{card.body}"))
+
+
+def ui_section_lines(context_dir) -> list:
+    """Lines of the `## UI` packet section for a card that touches the UI."""
+    system = load_design_system(context_dir)
+    out = ["## UI", ""]
+    if system is None:
+        out.append("\u26a0\ufe0f no design system: run cp-ui --design-system first (not blocking)")
+        out += list(UI_RULES)
+        return out + [""]
+    master = ds_dir(context_dir) / "MASTER.md"
+    try:
+        rel = master.relative_to(Path(context_dir).parent).as_posix()
+    except ValueError:
+        rel = master.as_posix()
+    out += [f"Design system: `{rel}`", ""]
+    out += [f"- {role}: {value}" for role, value in system["colors"].items()]
+    for k in ("heading", "body"):
+        if system["typography"].get(k):
+            out.append(f"- font {k}: {system['typography'][k]}")
+    out.append("")
+    out += list(UI_RULES)
+    out += ["Use only the tokens above \u2014 no raw colors or fonts outside the design system.",
+            "When done, run `cp-ui --audit` (add `--visual` if configured).", ""]
+    return out

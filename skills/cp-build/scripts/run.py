@@ -9,6 +9,7 @@ Usage:
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # _shared/ sits in the skills root: next to this skill (repo, Claude Code) or one
@@ -20,7 +21,7 @@ for _root in (_SKILL_DIR.parent, _SKILL_DIR.parent.parent):
             sys.path.insert(0, str(_root))
         break
 
-from _shared import cards, context, roadmap, testcheck  # noqa: E402
+from _shared import cards, context, roadmap, testcheck, uicheck  # noqa: E402
 from _shared.discipline import cmdline, fail, prior_artifacts, read_document  # noqa: E402
 from _shared.rup import EXIT_OK, setup_console  # noqa: E402
 
@@ -106,6 +107,8 @@ def start(context_dir, card_id) -> None:
     if card.status not in STARTABLE:
         fail(f"{card_id} is in {card.status}; --start needs {', '.join(STARTABLE)}")
     cards.set_meta(card, "branch", cards.branch_name(card))
+    if card.type == "bug" and card.meta.get("source") == "cp-ui":
+        cards.set_meta(card, "ui_verify_after", datetime.now().isoformat(timespec="seconds"))
     card = cards.move(context_dir, card_id, "3-doing", "started")
     story = parent_of(context_dir, card)
     phase = packet_phase(context_dir, card)
@@ -125,6 +128,10 @@ def start(context_dir, card_id) -> None:
         print(f"### {label}\n\n{body}\n")
     if not found:
         print("(none recorded)\n")
+    if card.type == "bug" and card.meta.get("source") == "cp-ui":
+        print("## UI BUG\n")
+        print(f"This is a UI BUG: prove the fix with `cp-ui --audit --verify {card.id}` "
+              f"(add --visual / --evidence as needed); a regression test is optional.\n")
     print("## TDD rules\n")
     targets = [l.strip().lstrip("-* ").strip("`") for l in
                cards.section_text(card, "Target files").splitlines() if l.strip()]
@@ -152,7 +159,15 @@ def finish(context_dir, card_id, source, project_root) -> None:
         fail(f"{card_id} has no parent story")
     text = read_document(source).strip()
     delivery = testcheck.parse_delivery(text)
-    problems = testcheck.check_delivery(delivery, card, story, Path(project_root))
+    verify = None
+    if card.type == "bug" and card.meta.get("source") == "cp-ui":
+        rec = uicheck.verify_record(context_dir, card.id)
+        after = str(card.meta.get("ui_verify_after", ""))
+        if (rec and rec.get("result") == "pass" and after
+                and str(rec.get("at", "")) >= after):
+            verify = rec
+    problems = testcheck.check_delivery(delivery, card, story, Path(project_root),
+                                        ui_verified=verify is not None)
     if problems:
         print("Delivery rejected:")
         for problem in problems:
@@ -166,8 +181,15 @@ def finish(context_dir, card_id, source, project_root) -> None:
     cards.set_section(card, "Delivery", testcheck.embed_delivery(text))
     if card.type == "bug":
         cards.set_section(card, "Fix", delivery.section("What was done"))
-        cards.set_section(card, "Regression test", delivery.section("Tests"))
+        regression = delivery.section("Tests")
+        if verify is not None and not delivery.tests:
+            regression = (regression.strip() + "\n\n" if regression.strip() else "") + (
+                f"cp-ui re-check: {verify.get('rule', '')} — pass at {verify['at']} "
+                f"(evidence: {verify.get('evidence', '')})")
+        cards.set_section(card, "Regression test", regression)
     card = cards.move(context_dir, card_id, "4-review", "delivered")
+    if verify is not None:
+        print(f"UI BUG verified by cp-ui re-check at {verify['at']}")
     print(f"{card.id} -> {card.status}")
 
 

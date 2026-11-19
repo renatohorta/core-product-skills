@@ -260,8 +260,13 @@ def _test_problems(delivery, path, name, ids, allowed, owner, project_root) -> t
     return out, referenced
 
 
-def check_delivery(delivery: Delivery, task: Card, story, project_root: Path) -> list:
-    """Problems with the delivery's tests, in document order; [] means OK."""
+def check_delivery(delivery: Delivery, task: Card, story, project_root: Path,
+                   ui_verified: bool = False) -> list:
+    """Problems with the delivery's tests, in document order; [] means OK.
+
+    `ui_verified` (a bug opened by cp-ui with a passing re-check) waives only the
+    "no tests" / "no test references the bug ID" problems."""
+    waive = ui_verified and task.type == "bug"
     problems = []
     headings = "\n".join(f"## {h}" for h in delivery.sections)
     missing = missing_artifacts(headings, REQUIRED_SECTIONS)
@@ -272,7 +277,7 @@ def check_delivery(delivery: Delivery, task: Card, story, project_root: Path) ->
     problems += rulings_problems(delivery.section("Rulings"))
     problems += [f"Unrecognised line in ## Tests (expected `- <path>::<test> — covers <ID>`): {u}"
                  for u in delivery.unparsed]
-    if not delivery.tests:
+    if not delivery.tests and not waive:
         problems.append("The delivery lists no tests.")
 
     criteria = acceptance_criteria(story) if story is not None else []
@@ -287,7 +292,7 @@ def check_delivery(delivery: Delivery, task: Card, story, project_root: Path) ->
         problems += found
         covered |= referenced
     if task.type == "bug":
-        if task.id not in covered:
+        if task.id not in covered and not waive:
             problems.append(f"No test references the bug ID {task.id}.")
     else:
         problems += [f"Criterion {c} (task Covers) has no test." for c in covers(task)

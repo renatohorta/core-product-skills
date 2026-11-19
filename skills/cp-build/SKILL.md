@@ -38,6 +38,8 @@ and reviewing its result.
 - `--finish ID --delivery FILE|- [--project-root DIR]` — card in `3-doing`;
   project root defaults to the parent of `.context/`. Bugs also get `## Fix`
   and `## Regression test`, and need a `## Root cause` first (`cp-debug --diagnose`).
+  A BUG opened by cp-ui may be proven by `cp-ui --audit --verify ID` (pass, made after
+  `--start`) instead of a regression test; other bugs still need a test.
 - `--context-dir D` — another `.context/` (default: auto-detect or `RUP_CONTEXT_DIR`).
 
 Exit codes: 0 ok · 1 usage/rejected delivery · 4 not writable · 5 not authorized.

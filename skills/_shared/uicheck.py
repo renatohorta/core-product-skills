@@ -743,3 +743,52 @@ def unaddressed_visual(findings, visual_findings) -> list:
         if not covered:
             out.append(v)
     return out
+
+
+# ─── verify (re-check one UI BUG) ────────────────────────────────────────
+
+def verify_path(context_dir, bug_id) -> Path:
+    return Path(context_dir) / "ui" / "verify" / f"{bug_id}.json"
+
+
+def verify_record(context_dir, bug_id):
+    """The stored `--verify` record of a BUG, or None when missing or unreadable."""
+    try:
+        data = json.loads(verify_path(context_dir, bug_id).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def write_verify_record(context_dir, bug_id, rule, result, evidence) -> dict:
+    from datetime import datetime
+    rec = {"bug": bug_id, "rule": rule, "result": result,
+           "at": datetime.now().isoformat(timespec="seconds"), "evidence": evidence}
+    path = verify_path(context_dir, bug_id)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rec, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return rec
+
+
+def verify_static(context_dir, project_root, exclude, rule, file):
+    """(result, evidence): re-scan and look for non-dismissed candidates of rule in file."""
+    from _shared import uikit
+    cands, _ = scan(project_root, exclude, uikit.load_design_system(context_dir))
+    dismissed = load_dismissals(context_dir)
+    want = file_of(file)
+    left = [c for c in cands if c.rule == rule and file_of(c.file) == want
+            and candidate_key(c) not in dismissed]
+    if not left:
+        return "pass", f"no `{rule}` candidates left in {want}"
+    return "fail", "; ".join(f"{c.file}:{c.line}" for c in left[:5])
+
+
+def verify_visual(project_root, profile, check, viewport):
+    """(result, evidence) from a fresh run of the product's visual command."""
+    status, findings = run_visual(project_root, profile)
+    if not status.startswith("ran"):
+        return "fail", status
+    left = [v for v in findings if v["check"] == check and v["viewport"] == viewport]
+    if not left:
+        return "pass", f"{status}: no `{check}` in {viewport}"
+    return "fail", "; ".join(visual_location(v) for v in left[:5])

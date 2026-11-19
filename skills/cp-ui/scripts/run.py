@@ -13,6 +13,8 @@ It never calls a model (ADR-0012): the agent running it is the LLM.
         pages/<PAGE>.md) + tokens.json, log the decision
   run.py --audit ["<scope>"] [--path SUB] [--visual]
         print the audit packet (--visual runs the profile's visual command): static candidates, checklist, document format
+  run.py --audit --verify BUG-NNN [--visual] [--evidence PATH]
+        re-check one cp-ui BUG; writes .context/ui/verify/BUG-NNN.json (exit 1 on fail)
   run.py --audit --record FILE|- [--by NAME]
         validate the audit document, open one BUG per (rule, file) group of confirmed
         findings, store dismissals, write .context/ui/audits/<date>.md
@@ -340,6 +342,39 @@ def print_audit_packet(context_dir, scope, subpath, visual_opt_in=False):
     print(f"- Record: `{record_cmd}`")
 
 
+def verify_bug(context_dir, bug_id, visual_opt_in, evidence):
+    """Re-check ONE cp-ui BUG (its `ui_key` rule on its file); write the verify record."""
+    context.ensure_writable(context_dir)
+    card = cards.get(context_dir, bug_id)
+    key = str(card.meta.get("ui_key", ""))
+    if card.meta.get("source") != uicheck.SOURCE or not key:
+        fail(f"{bug_id} is not a cp-ui BUG (needs `source: cp-ui` and a `ui_key`): "
+             f"--verify only re-checks BUGs opened by cp-ui --audit --record")
+    rule, _, file = key.partition("::")
+    root = project_root(context_dir)
+    if rule.startswith("visual:"):
+        if not visual_opt_in:
+            fail(f"{bug_id} is a visual rule ({rule}): the visual re-check needs --visual "
+                 f"(it runs the profile's visual_audit command)")
+        result, ev = uicheck.verify_visual(root, load_profile(context_dir),
+                                           rule.split(":", 1)[1], file)
+    elif rule.startswith("checklist:"):
+        if not evidence:
+            fail(f"{bug_id} is a checklist item ({rule}): pass --evidence PATH "
+                 f"(a screenshot or note proving the fix)")
+        path = Path(evidence)
+        path = path if path.is_absolute() else root / path
+        if not path.is_file():
+            fail(f"--evidence {evidence}: not an existing file")
+        result, ev = "pass", str(evidence)
+    else:
+        result, ev = uicheck.verify_static(context_dir, root, excludes_of(context_dir),
+                                           rule, file)
+    rec = uicheck.write_verify_record(context_dir, bug_id, rule, result, ev)
+    print(f"{bug_id} {rule}: {result.upper()} at {rec['at']} — {ev}")
+    return 0 if result == "pass" else 1
+
+
 def _report_path(context_dir) -> Path:
     folder = Path(context_dir) / "ui" / "audits"
     stamp = date.today().isoformat()
@@ -455,6 +490,8 @@ def main(argv=None) -> int:
     p.add_argument("--audit", action="store_true", help="UI audit packet / record")
     p.add_argument("--visual", action="store_true",
                    help="--audit: run the profile's visual_audit command (opt-in; never starts servers)")
+    p.add_argument("--verify", metavar="BUG-ID", help="--audit: re-check one cp-ui BUG")
+    p.add_argument("--evidence", metavar="PATH", help="--audit --verify: proof file for a checklist BUG")
     p.add_argument("--path", help="--audit [--record]: narrow the scan to a subtree")
     p.add_argument("--by", help="--audit --record: who dismissed (default: agent)")
     p.add_argument("--context-dir", help="target .context/ (default: auto-detect)")
@@ -464,6 +501,8 @@ def main(argv=None) -> int:
     if args.audit and args.design_system:
         fail("--audit and --design-system are separate modes; pick one")
     if args.audit:
+        if args.verify:
+            return verify_bug(context_dir, args.verify, args.visual, args.evidence)
         if args.record:
             record_audit(context_dir, args.record, args.by, args.path)
         else:

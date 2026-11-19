@@ -69,6 +69,8 @@ project to be authorized (exit 5 otherwise).
 
 Audit commands: `--audit ["<scope>"] [--path SUB]` — packet · `--audit --record FILE|- [--by NAME]` — record.
 
+Verify a fix: `--audit --verify BUG-NNN [--visual] [--evidence PATH]` re-checks only that BUG's rule on its file (the `ui_key` of the card). Static rules re-scan (dismissed candidates do not count); visual rules need `--visual` too (the product's command runs again); checklist rules need `--evidence PATH`, an existing file (relative to the project root or absolute). It writes `.context/ui/verify/BUG-NNN.json` (`bug`, `rule`, `result`, `at`, `evidence`), exit 0 on pass and 1 on fail. `cp-build --finish` accepts a passing record made after `--start` instead of a regression test, only for BUGs opened by cp-ui.
+
 ### Visual audit (optional)
 
 Off by default (`visual: not configured`). To enable it in your product:

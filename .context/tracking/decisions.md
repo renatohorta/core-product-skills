@@ -787,7 +787,8 @@ Design: `inbox/processed/cp-ui-design.md`.
   `BUG-NNN` (grouped one per rule x file, deduped against open BUGs; a finding after the BUG
   reached `7-done` opens a new one) and the delivering card moves on. (4) For BUGs opened by
   cp-ui the fix evidence is a re-check, `cp-ui --audit --verify BUG-NNN`, accepted by
-  `cp-build --finish` instead of a regression test (cards carry `source: cp-ui`).
+  `cp-build --finish` instead of a regression test (cards carry `source: cp-ui`). Order: `cp-build --start` → `cp-debug --diagnose` (Root cause
+  with evidence) → fix → `cp-ui --audit --verify` → `cp-build --finish`.
 - **Audit in three layers with an honest header** (static / visual / checklist): static regex
   candidates the agent must confirm or dismiss; the product's optional visual audit; an
   evidence checklist where `not-verified` stays visible. `0 files` or an unanswered item is

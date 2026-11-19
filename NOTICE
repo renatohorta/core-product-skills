@@ -1,0 +1,22 @@
+Core Product Skills (cp-*)
+Copyright (c) Renato Sacramento Horta. Licensed under the MIT License (see LICENSE).
+
+This product includes material derived from third-party work:
+
+Claude-BugHunter
+  Author: Sachin Sharma (https://github.com/elementalsouls/Claude-BugHunter)
+  License: MIT (code) and CC BY 4.0 (documentation / skill content)
+
+  The skill `cp-operation-pentest` was informed by Claude-BugHunter:
+  - Its per-class detection knowledge (the `hunt-*` skills) was condensed and
+    reframed from "attack a target" into white-box "find the hole in our own
+    source" patterns in `skills/cp-operation-pentest/references/*.md`.
+  - The 7-Question Gate (`references/triage.md`) is adapted from its
+    `triage-validation` skill; evidence hygiene (`references/evidence.md`) from
+    its `evidence-hygiene` skill.
+  - The coverage-closure idea behind `cp-test --audit-closure` and the
+    `(module × class)` coverage ledger in `_shared/auditclosure.py` /
+    `_shared/pentest.py` is adapted from its `engine/closure.py` (see ADR-0018).
+
+  No Claude-BugHunter files are redistributed verbatim; the reference content is
+  original, condensed writing credited under CC BY 4.0.

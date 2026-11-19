@@ -352,3 +352,29 @@ def test_verify_visual_fails_when_report_covers_fewer_viewports(tmp_path, python
     assert res == "fail" and "desktop-1440 not exercised" in ev
     prof = _vprofile(python_cmd, tmp_path, {"viewports": [], "findings": []})
     assert uicheck.verify_visual(tmp_path, prof, "x", [])[0] == "fail"
+
+
+def test_visual_dismissal_does_not_hide_different_evidence(tmp_path):
+    """A dismissal keyed on the html selector must not swallow a worse finding later."""
+    one = {"check": "img-alt", "viewport": "mobile-360", "selector": "html",
+           "detail": "1 <img> missing alt"}
+    twelve = dict(one, detail="12 <img> missing alt")
+    same_elsewhere = dict(one, viewport="desktop-1440")
+    k1 = uicheck.visual_dismissal_key(one["check"], one["selector"], one["detail"])
+    assert uicheck.visual_dismissal_key(twelve["check"], twelve["selector"], twelve["detail"]) != k1
+    kept = uicheck.visual_not_dismissed([one, twelve, same_elsewhere], {k1})
+    assert twelve in kept and one not in kept and same_elsewhere not in kept
+
+
+def test_dismissed_visual_regression_reappears(ctx_env, python_cmd):
+    ctx, root = _six(ctx_env, python_cmd)
+    ui(["--audit", "--visual"], ctx_env, python_cmd)
+    r = ui(["--audit", "--record", "-"], ctx_env, python_cmd,
+           stdin=_six_doc("dismissed — intentional marquee"))
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    worse = {"viewports": VPS, "findings": [dict(SIX["findings"][0],
+                                                 detail="Page overflows by 900px at mobile-360")]}
+    _script(root, "ok.py", "import json, pathlib\np = pathlib.Path('out'); p.mkdir(exist_ok=True)\n"
+            f"(p / 'report.json').write_text(json.dumps({worse!r}))\n")
+    r = ui(["--audit", "--visual"], ctx_env, python_cmd)
+    assert "Rule: visual:horizontal-overflow" in r.stdout

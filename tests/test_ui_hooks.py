@@ -137,3 +137,16 @@ def test_review_latest_audit_orders_by_date_then_numeric_suffix(ctx_env, python_
         (aud / name).write_text(f"{head} header\nx\n", encoding="utf-8")
     r = run_skill("cp-review", ["TK-001"], ctx_env, python_cmd)
     assert "tenth header" in r.stdout and "second header" not in r.stdout
+
+
+def test_review_latest_audit_orders_across_days(ctx_env, python_cmd):
+    """A later day wins over any same-day suffix of an earlier day (honest 'latest')."""
+    ctx = _proj(ctx_env, "- src/Home.tsx")
+    cards.move(ctx, "TK-001", "4-review", "delivered")
+    aud = ctx / "ui" / "audits"
+    aud.mkdir(parents=True)
+    for name, head in (("2026-11-19.md", "d19"), ("2026-11-19-2.md", "d19b"),
+                       ("2026-11-19-10.md", "d19j"), ("2026-11-20.md", "d20")):
+        (aud / name).write_text(f"{head} header\nx\n", encoding="utf-8")
+    r = run_skill("cp-review", ["TK-001"], ctx_env, python_cmd)
+    assert "d20 header" in r.stdout and "d19j header" not in r.stdout

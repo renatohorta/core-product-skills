@@ -100,8 +100,8 @@ def packet(context_dir, card_id, project_root) -> None:
 
     if uikit.touches_ui(card):
         def _audit_order(p):  # YYYY-MM-DD[-N].md: by date, then the numeric suffix
-            m = re.match(r"^(.*?)(?:-(\d+))?$", p.stem)
-            return (m.group(1), int(m.group(2) or 1))
+            m = re.match(r"^(\d{4}-\d{2}-\d{2})(?:-(\d+))?$", p.stem)
+            return (m.group(1), int(m.group(2) or 1)) if m else (p.stem, 0)
         audits = sorted((Path(context_dir) / "ui" / "audits").glob("*.md"), key=_audit_order)
         head = "none yet"
         if audits:

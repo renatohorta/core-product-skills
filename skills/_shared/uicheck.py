@@ -322,6 +322,9 @@ ANSWERED = ("ok", "finding", "not-applicable")
 REQUIRED_FIELDS = ("rule", "location", "evidence", "verdict", "severity")
 DISMISSALS = ("ui", "dismissals.json")
 VISUAL_NOT_CONFIGURED = "not configured"
+# A visual BUG is one per check, whatever the viewport: ui_key `visual:<check>::(page)`;
+# the viewports it was seen at are its occurrences (meta `ui_viewports`, comma-separated).
+VISUAL_PAGE = "(page)"
 
 
 @dataclass
@@ -368,12 +371,27 @@ def file_of(location: str) -> str:
 
 
 def finding_file(f: Finding) -> str:
-    """The grouping 'file' of a finding: the viewport for `visual:` rules (Location is
-    `<viewport> <selector>`), the path before `:line` for everything else."""
+    """The grouping 'file' of a finding: VISUAL_PAGE for `visual:` rules (one BUG per check,
+    the viewports are occurrences), the path before `:line` for everything else."""
     if f.rule.strip().startswith("visual:"):
-        parts = (f.location or "").split()
-        return parts[0] if parts else ""
+        return VISUAL_PAGE
     return file_of(f.location)
+
+
+def finding_viewport(f: Finding) -> str:
+    """First token of a visual finding's Location (`<viewport> <selector>`)."""
+    parts = (f.location or "").split()
+    return parts[0] if parts else ""
+
+
+def _finding_selector(f: Finding) -> str:
+    parts = (f.location or "").split(None, 1)
+    return parts[1].strip() if len(parts) > 1 else ""
+
+
+def visual_dismissal_key(check: str, selector: str) -> str:
+    """Viewport-independent: rule + check + fingerprint of the selector."""
+    return f"visual:{check}::{VISUAL_PAGE}::{fingerprint(selector)}"
 
 
 def group_key(f: Finding) -> str:
@@ -523,8 +541,10 @@ def match_candidate(f: Finding, candidates):
     if not line and len(pool) == 1:
         return pool[0], None
     where = ", ".join(f"{c.file}:{c.line}" for c in pool) or "none"
-    why = "ambiguous" if len(by_text) > 1 else "matches no current candidate"
-    return None, (f"'{f.rule.strip()}' at {f.location} {why}; "
+    if len(by_text) > 1 or (not line and len(pool) > 1):
+        return None, (f"'{f.rule.strip()}' at {f.location} is ambiguous — add :line "
+                      f"(candidates: {where})")
+    return None, (f"'{f.rule.strip()}' at {f.location} matches no current candidate; "
                   f"current candidates for {rule} in {file or '(no file)'}: {where}")
 
 
@@ -546,7 +566,10 @@ def record_dismissals(context_dir, findings, actor, candidates=()) -> list:
             continue
         file = finding_file(f)
         pick = match_candidate(f, candidates)[0] if f.rule.strip() in CHECKS else None
-        fp = fingerprint(pick.snippet if pick else f.evidence)
+        if f.rule.strip().startswith("visual:"):
+            fp = fingerprint(_finding_selector(f))
+        else:
+            fp = fingerprint(pick.snippet if pick else f.evidence)
         key = f"{f.rule.strip()}::{file}::{fp}"
         if key in seen:
             continue
@@ -602,6 +625,16 @@ def occurrence(f: Finding) -> str:
     return f"{f.location} — {f.evidence}"
 
 
+def group_viewports(group) -> list:
+    """Distinct viewports of a visual group, in first-seen order."""
+    out = []
+    for f in group:
+        vp = finding_viewport(f)
+        if vp and vp not in out:
+            out.append(vp)
+    return out
+
+
 def bug_document(rule: str, file: str, group):
     """(title, body, priority) for the BUG of one (rule, file) group of confirmed findings."""
     top = max(group, key=lambda f: severity_rank(f.severity))
@@ -611,9 +644,11 @@ def bug_document(rule: str, file: str, group):
         if o not in seen:
             seen.add(o)
             lines.append(f"- {o}")
+    where = (f"at viewports {', '.join(group_viewports(group))}" if file == VISUAL_PAGE
+             else f"in {file}")
     body = ("## Symptom\n"
             f"{_rule_description(rule)}. Severity: {top.severity.strip()}. "
-            f"Found by cp-ui --audit in {file}.\n\n"
+            f"Found by cp-ui --audit {where}.\n\n"
             "## Reproduction\n" + "\n".join(lines) + "\n")
     return f"[ui] {rule} in {file}", body, priority_of(top.severity)
 
@@ -729,9 +764,8 @@ def visual_evidence(v: dict) -> str:
 def save_visual_last(context_dir, status, scope, findings) -> bool:
     """Persist the run. On failure: try a minimal `not persisted` marker, else unlink the old
     file, warn on stderr — never leave an older `ran` behind. Returns True if persisted."""
-    from datetime import datetime
     path = visual_last_path(context_dir)
-    at = datetime.now().isoformat(timespec="seconds")
+    at = now_utc()
 
     def _write(st, fs):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -774,6 +808,11 @@ def visual_status_for_record(context_dir, profile, scope):
     return "failed (no visual run for this scope — run the packet first)", []
 
 
+def visual_not_dismissed(visual_findings, dismissed_keys) -> list:
+    return [v for v in visual_findings
+            if visual_dismissal_key(v["check"], v["selector"]) not in dismissed_keys]
+
+
 def unaddressed_visual(findings, visual_findings) -> list:
     """Stored visual findings that no `visual:<check>` finding of this record covers
     (same check and viewport, and the selector when the record names one)."""
@@ -783,7 +822,7 @@ def unaddressed_visual(findings, visual_findings) -> list:
         for f in findings:
             if f.rule.strip() != f"visual:{v['check']}":
                 continue
-            if finding_file(f) == v["viewport"] and (not v["selector"] or v["selector"] in f.location):
+            if finding_viewport(f) == v["viewport"] and (not v["selector"] or v["selector"] in f.location):
                 covered = True
                 break
         if not covered:
@@ -867,7 +906,7 @@ def _dismissed_after_start(row, rule, file, after) -> bool:
     if after is None or row.get("rule") != rule or file_of(str(row.get("file", ""))) != file:
         return False
     at = parse_ts(row.get("at", ""))
-    return at is None or at > after
+    return at is None or at >= after
 
 
 def dismissals_for(context_dir, rule, file) -> list:
@@ -894,15 +933,23 @@ def verify_static(context_dir, project_root, exclude, rule, file, after=None):
     return "fail", "; ".join(f"{c.file}:{c.line}" for c in left[:5])
 
 
-def verify_visual(project_root, profile, check, viewport):
-    """(result, evidence) from a fresh run of the product's visual command."""
+def verify_visual(project_root, profile, check, viewports):
+    """(result, evidence) from a fresh run of the product's visual command. Passes only
+    when the report covered every recorded viewport and `check` is absent at EVERY viewport
+    the report covered."""
+    if isinstance(viewports, str):
+        viewports = [viewports]
     status, findings = run_visual(project_root, profile)
     if not status.startswith("ran"):
         return "fail", status
     seen = report_viewports(project_root, profile)
-    if viewport not in seen:
-        return "fail", f"viewport {viewport} not exercised (report has: {', '.join(seen) or 'none'})"
-    left = [v for v in findings if v["check"] == check and v["viewport"] == viewport]
+    if not seen:
+        return "fail", "the report covered no viewport"
+    missing = [vp for vp in viewports if vp not in seen]
+    if missing:
+        return "fail", (f"viewport {', '.join(missing)} not exercised "
+                        f"(report has: {', '.join(seen)})")
+    left = [v for v in findings if v["check"] == check and v["viewport"] in seen]
     if not left:
-        return "pass", f"{status}: no `{check}` in {viewport}"
+        return "pass", f"{status}: no `{check}` in {', '.join(seen)}"
     return "fail", "; ".join(visual_location(v) for v in left[:5])

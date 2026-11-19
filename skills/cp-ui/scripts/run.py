@@ -312,7 +312,12 @@ def print_audit_packet(context_dir, scope, subpath, visual_opt_in=False):
           "references/static-checks.md\n")
 
     if visual or visual_status != uicheck.VISUAL_NOT_CONFIGURED:
-        print(f"## Visual candidates ({len(visual)}) — visual: {visual_status}\n")
+        shown_v = uicheck.visual_not_dismissed(visual, dismissed)
+        hidden_v = len(visual) - len(shown_v)
+        visual = shown_v
+        print(f"## Visual candidates ({len(visual)}"
+              + (f", {hidden_v} hidden as dismissed" if hidden_v else "")
+              + f") — visual: {visual_status}\n")
         for v in visual:
             print("## Finding")
             print(f"Rule: visual:{v['check']}")
@@ -361,8 +366,11 @@ def verify_bug(context_dir, bug_id, visual_opt_in, evidence):
         if not visual_opt_in:
             fail(f"{bug_id} is a visual rule ({rule}): the visual re-check needs --visual "
                  f"(it runs the profile's visual_audit command)")
+        recorded = [v for v in str(card.meta.get("ui_viewports", "")).split(",") if v]
+        if not recorded and file != uicheck.VISUAL_PAGE:  # legacy per-viewport key
+            recorded = [file]
         result, ev = uicheck.verify_visual(root, load_profile(context_dir),
-                                           rule.split(":", 1)[1], file)
+                                           rule.split(":", 1)[1], recorded)
     elif rule.startswith("checklist:"):
         if not evidence:
             fail(f"{bug_id} is a checklist item ({rule}): pass --evidence PATH "
@@ -449,7 +457,13 @@ def record_audit(context_dir, source, by, subpath=""):
     open_bugs = uicheck.open_bugs_by_key(context_dir)
     results = []  # (key, group, card id, created?)
     for key, group in groups.items():
+        vps = uicheck.group_viewports(group) if key.endswith("::" + uicheck.VISUAL_PAGE) else []
         if key in open_bugs:
+            if vps:
+                old = [v for v in str(open_bugs[key].meta.get("ui_viewports", "")).split(",") if v]
+                merged = old + [v for v in vps if v not in old]
+                if merged != old:
+                    cards.set_meta(open_bugs[key], "ui_viewports", ",".join(merged))
             results.append((key, group, open_bugs[key].id, False))
             continue
         rule, file = key.split("::", 1)
@@ -457,12 +471,15 @@ def record_audit(context_dir, source, by, subpath=""):
         card = cards.create(context_dir, "bug", title, body, priority=priority,
                             source=uicheck.SOURCE)
         cards.set_meta(card, "ui_key", key)
+        if vps:
+            cards.set_meta(card, "ui_viewports", ",".join(vps))
         results.append((key, group, card.id, True))
 
     # never re-run the command: `ran` only comes from the last packet run for this scope
     visual_status, visual = uicheck.visual_status_for_record(
         context_dir, load_profile(context_dir), subpath)
-    visual_left = uicheck.unaddressed_visual(findings, visual)
+    visual_left = uicheck.unaddressed_visual(
+        findings, uicheck.visual_not_dismissed(visual, already))
     header = uicheck.header_line(scanned, visual_status, answers, len(left) + len(visual_left))
     dismissed = [f for f in findings if f.dismissed]
     unverified = [f for f in findings if not f.confirmed and not f.dismissed]

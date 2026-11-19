@@ -106,14 +106,15 @@ def test_packet_lists_visual_candidates_and_persists(ctx_env, python_cmd):
     assert len(last["findings"]) == 1
 
 
-def test_record_uses_last_run_and_opens_bug_per_viewport(ctx_env, python_cmd):
+def test_record_uses_last_run_and_opens_one_bug_per_check(ctx_env, python_cmd):
     ctx, _ = _project(ctx_env, python_cmd)
     ui(["--audit", "--visual"], ctx_env, python_cmd)
     r = ui(["--audit", "--record", "-"], ctx_env, python_cmd, stdin=_finding())
     assert r.returncode == EXIT_OK, r.stdout + r.stderr
     assert "visual: ran (2 viewports)" in r.stdout
     bugs = [c for c in cards.load_all(ctx).values() if c.type == "bug"]
-    assert [b.meta["ui_key"] for b in bugs] == ["visual:horizontal-overflow::mobile-360"]
+    assert [b.meta["ui_key"] for b in bugs] == ["visual:horizontal-overflow::(page)"]
+    assert bugs[0].meta["ui_viewports"] == "mobile-360"
 
 
 def test_record_lists_unaddressed_visual_and_does_not_rerun(ctx_env, python_cmd):
@@ -281,3 +282,73 @@ def test_template_hardening_and_node_check():
         pytest.skip("node not installed")
     r = subprocess.run([node, "--check", str(path)], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+
+VPS = ["mobile-360", "mobile-390", "tablet-768", "laptop-1024", "desktop-1440", "wide-1920"]
+SIX = {"viewports": VPS,
+       "findings": [{"check": "horizontal-overflow", "severity": "High", "viewport": vp,
+                     "selector": "div.hero", "detail": f"Page overflows at {vp}",
+                     "screenshot": ""} for vp in VPS]}
+
+
+def _six(ctx_env, python_cmd):
+    ctx, root = _project(ctx_env, python_cmd)
+    _script(root, "ok.py", "import json, pathlib\np = pathlib.Path('out'); p.mkdir(exist_ok=True)\n"
+            f"(p / 'report.json').write_text(json.dumps({SIX!r}))\n")
+    return ctx, root
+
+
+def _six_doc(verdict="confirmed"):
+    return "".join(
+        f"## Finding\nRule: visual:horizontal-overflow\nLocation: {vp} div.hero\n"
+        f"Evidence: Page overflows at {vp}\nVerdict: {verdict}\nSeverity: High\n\n" for vp in VPS)
+
+
+def test_six_viewports_one_bug_with_occurrences(ctx_env, python_cmd):
+    ctx, _ = _six(ctx_env, python_cmd)
+    ui(["--audit", "--visual"], ctx_env, python_cmd)
+    r = ui(["--audit", "--record", "-"], ctx_env, python_cmd, stdin=_six_doc())
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    bugs = [c for c in cards.load_all(ctx).values() if c.type == "bug"]
+    assert len(bugs) == 1
+    assert bugs[0].meta["ui_key"] == f"visual:horizontal-overflow::{uicheck.VISUAL_PAGE}"
+    assert bugs[0].meta["ui_viewports"] == ",".join(VPS)
+    assert all(vp in bugs[0].body for vp in VPS)
+
+
+def test_dismissed_visual_candidate_hidden_next_packet(ctx_env, python_cmd):
+    ctx, _ = _six(ctx_env, python_cmd)
+    ui(["--audit", "--visual"], ctx_env, python_cmd)
+    r = ui(["--audit", "--record", "-"], ctx_env, python_cmd,
+           stdin=_six_doc("dismissed — intentional marquee"))
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    r = ui(["--audit", "--visual"], ctx_env, python_cmd)
+    assert "Visual candidates (0" in r.stdout and "hidden as dismissed" in r.stdout
+    assert "Rule: visual:horizontal-overflow" not in r.stdout
+
+
+def _vprofile(python_cmd, root, report):
+    (root / "fake.py").write_text(
+        "import json, pathlib\np = pathlib.Path('out'); p.mkdir(exist_ok=True)\n"
+        f"(p / 'report.json').write_text(json.dumps({report!r}))\n")
+    return _profile(python_cmd, "fake.py")
+
+
+def test_verify_visual_requires_check_absent_at_every_viewport(tmp_path, python_cmd):
+    clean = {"viewports": ["mobile-360", "desktop-1440"], "findings": []}
+    prof = _vprofile(python_cmd, tmp_path, clean)
+    assert uicheck.verify_visual(tmp_path, prof, "horizontal-overflow",
+                                 ["mobile-360", "desktop-1440"])[0] == "pass"
+    other = {"viewports": ["mobile-360", "desktop-1440"],
+             "findings": [dict(SIX["findings"][0], viewport="desktop-1440")]}
+    prof = _vprofile(python_cmd, tmp_path, other)
+    res, ev = uicheck.verify_visual(tmp_path, prof, "horizontal-overflow", ["mobile-360"])
+    assert res == "fail" and "desktop-1440" in ev
+
+
+def test_verify_visual_fails_when_report_covers_fewer_viewports(tmp_path, python_cmd):
+    prof = _vprofile(python_cmd, tmp_path, {"viewports": ["mobile-360"], "findings": []})
+    res, ev = uicheck.verify_visual(tmp_path, prof, "x", ["mobile-360", "desktop-1440"])
+    assert res == "fail" and "desktop-1440 not exercised" in ev
+    prof = _vprofile(python_cmd, tmp_path, {"viewports": [], "findings": []})
+    assert uicheck.verify_visual(tmp_path, prof, "x", [])[0] == "fail"

@@ -238,7 +238,7 @@ def test_visual_verify_fails_when_viewport_not_exercised(ctx_env, python_cmd):
     (ctx / "ui").mkdir(exist_ok=True)
     (ctx / "ui" / "profile.json").write_text(json.dumps({"visual_audit": {
         "command": f'"{python_cmd}" fake.py', "report": "out/report.json"}}))
-    _verify_fail(ctx_env, python_cmd, ctx, bug, "viewport mobile-360 not exercised", ["--visual"])
+    _verify_fail(ctx_env, python_cmd, ctx, bug, "mobile-360 not exercised", ["--visual"])
 
 
 def _set_record(ctx, bug, rule, at, result="pass", bug_id=None):

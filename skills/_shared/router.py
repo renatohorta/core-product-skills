@@ -177,7 +177,8 @@ CHAINS = [
     ("Product with a UI",
      "discover \u2192 ui-design [operator picks a direction] \u2192 requirements \u2192 backlog "
      "\u2192 build (UI section) \u2192 ui-audit \u2192 one BUG per confirmed finding "
-     "\u2192 debug/build \u2192 verify (cp-ui --audit --verify) \u2192 review"),
+     "\u2192 build --start \u2192 debug --diagnose \u2192 fix \u2192 cp-ui --audit --verify "
+     "\u2192 build --finish \u2192 review"),
 ]
 
 GATES = [

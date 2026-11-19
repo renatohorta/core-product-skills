@@ -71,12 +71,15 @@ def test_design_system_audit_bug_verify_finish(ctx_env, python_cmd, tmp_path):
     assert len(bugs) == 1 and bugs[0].meta.get("source") == "cp-ui"
     bug = bugs[0].id
 
-    # 4. start it; the fix is not made yet, so verify fails
-    # cp-build --start needs a Root cause; a cp-ui BUG is born without one, and
-    # cp-debug --diagnose would move it to 3-doing (not startable), so fill it directly.
-    cards.set_section(cards.get(ctx, bug), "Root cause", "The logo image has no alt attribute.")
+    # 4. start it, record the root cause (cp-debug), the fix is not made yet so verify fails
     r = build(["--start", bug], ctx_env, python_cmd)
     assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    cause = ("## Root cause\n\nThe logo image has no alt attribute.\n"
+             "Evidence: index.html line 7 <img src=\"x.png\"> without alt\n")
+    r = run_skill("cp-debug", ["--diagnose", bug, "--doc", "-"], ctx_env, python_cmd, stdin=cause)
+    assert r.returncode == EXIT_OK, r.stdout + r.stderr
+    # verify must be strictly later than --start (1-second resolution); real flows have
+    # natural latency between start and verify, so the test backdates the marker instead.
     _backdate(ctx, bug)
     assert ui(["--audit", "--verify", bug], ctx_env, python_cmd).returncode == 1
 

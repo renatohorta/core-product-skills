@@ -1,7 +1,7 @@
 # CLAUDE.md — Project Context
 
 **Project**: Core Product Skills — canonical repository of the **RUP skills**
-(`skills/cp-*`: 9 document skills + 6 execution skills, ADR-0013) propagated to the Hermes Agent and Claude Code. **The agent
+(`skills/cp-*`: 9 document skills + 8 execution skills, ADR-0013, ADR-0020, ADR-0022) propagated to the Hermes Agent and Claude Code. **The agent
 running a skill is the LLM** (ADR-0012): the skills never call a model and are
 pure standard library. The legacy Software Factory family (removed in ADR-0010) also used the `cp-` prefix; the current `cp-*` skills are the RUP skills, renamed from `rup-*` in ADR-0014. The CrewAI
 execution (ADR-0012) only exists in the git history.
@@ -48,7 +48,10 @@ source of truth and the only place agents read/write project context.
    lives in `.context/roadmap/`; `docs/06-roadmap.md` and `docs/06-board.md` are
    generated, never hand-edited. The skills never run git, and never run the
    project's tests — except `cp-test --mutate`, which runs the command of
-   `.context/tests/profile.json` in disposable copies of the project (ADR-0016).
+   `.context/tests/profile.json` in disposable copies of the project (ADR-0016),
+   and `cp-ui --audit --visual` (and `--verify --visual`), which runs the single
+   command declared as `visual_audit.command` in `.context/ui/profile.json`, opt-in
+   per call, with a timeout; it never starts or stops servers (ADR-0022).
 7. **Windows**: the skills force UTF-8 on stdout/stderr (`setup_console`).
 8. **Before committing**: `git status --short` (partial commits are the most
    common mistake here) and `.venv/bin/python -m pytest` (~5 s).
@@ -70,6 +73,7 @@ source of truth and the only place agents read/write project context.
 - Fix a bug: `cp-debug`
 - Do the tests catch bugs? (static audit, mutation): `cp-test --audit`
 - Review a delivered card: `cp-review`
+- Design system before UI work / UI audit (a11y, responsive, UI bugs): `cp-ui --design-system` · `cp-ui --audit`
 - RUP documents (governance, disciplines): `cp-orchestrator`
 - Project context lives in `.context/` (set up with `cp-context`).
 <!-- rup-skills:end -->

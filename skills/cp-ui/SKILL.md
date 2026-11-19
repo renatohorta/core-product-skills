@@ -35,12 +35,20 @@ Format of MASTER.md, allowed roles, contrast pairs and how to present: `referenc
 
 ## Commands
 
-- `--design-system ["<briefing>"] [--product NAME] [--out DIR]` — packet.
+Design system:
+- `--design-system ["<briefing>"] [--product NAME] [--out DIR]` — packet (read-only).
 - `--design-system --record FILE|- --chosen-by NAME [--page PAGE] [--force --reason R]` — record.
-- `--context-dir D` — another `.context/` (default: auto-detect or `RUP_CONTEXT_DIR`).
 
-Exit codes: 0 ok · 1 usage / invalid document / `--chosen-by` mismatch / overwrite refused ·
-4 `.context/` not writable · 5 not authorized (`--record` only; the packet is read-only).
+Audit:
+- `--audit ["<scope>"] [--path SUB] [--visual]` — packet (`--visual` runs the profile's visual command).
+- `--audit --record FILE|- [--by NAME] [--path SUB]` — record: BUGs, dismissals, report.
+- `--audit --verify BUG-NNN [--visual] [--evidence PATH]` — re-check one UI BUG.
+
+Everywhere: `--context-dir D` — another `.context/` (default: auto-detect or `RUP_CONTEXT_DIR`).
+
+Exit codes: 0 ok · 1 usage / invalid document / `--chosen-by` mismatch / overwrite refused /
+verify failed · 4 `.context/` not writable · 5 not authorized (`--record` and the audit packet;
+the design-system packet is read-only).
 
 ## Audit
 
@@ -67,9 +75,9 @@ project to be authorized (exit 5 otherwise).
    findings; 1 on an invalid document (unknown rule/item, missing field, a `finding` without
    its block).
 
-Audit commands: `--audit ["<scope>"] [--path SUB]` — packet · `--audit --record FILE|- [--by NAME]` — record.
+### Verify a fix
 
-Verify a fix: `--audit --verify BUG-NNN [--visual] [--evidence PATH]` re-checks only that BUG's rule on its file (the `ui_key` of the card). Static rules re-scan (dismissed candidates do not count); visual rules need `--visual` too (the product's command runs again); checklist rules need `--evidence PATH`, an existing file (relative to the project root or absolute). It writes `.context/ui/verify/BUG-NNN.json` (`bug`, `rule`, `result`, `at`, `evidence`), exit 0 on pass and 1 on fail. `cp-build --finish` accepts a passing record made after `--start` instead of a regression test, only for BUGs opened by cp-ui.
+`--audit --verify BUG-NNN [--visual] [--evidence PATH]` re-checks only that BUG's rule on its file (the `ui_key` of the card). Static rules re-scan (dismissed candidates do not count); visual rules need `--visual` too (the product's command runs again); checklist rules need `--evidence PATH`, an existing file (relative to the project root or absolute). It writes `.context/ui/verify/BUG-NNN.json` (`bug`, `rule`, `result`, `at`, `evidence`), exit 0 on pass and 1 on fail. `cp-build --finish` accepts a passing record made after `--start` instead of a regression test, only for BUGs opened by cp-ui.
 
 Trust model: verify re-checks what the scanner, the visual audit or the evidence can show (a file the scanner cannot read, an excluded one, a missing design system for `raw-color`, or a viewport the report never exercised is a `fail`, never a pass); records are not tamper-proof, so reviewers read them (cp-review shows `Re-checked by cp-ui`). Timestamps are UTC with offset; a record counts only if strictly later than `cp-build --start`, for the same BUG and rule. When a BUG is re-checked, the tests listed in the delivery need not name the BUG ID (listed tests are still validated). A confirmed static finding must match a scanner candidate at `--record`; what the scanner cannot see is filed as `checklist:<id>`.
 
